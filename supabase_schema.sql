@@ -1,0 +1,125 @@
+-- ====================================================================
+-- SOMAJAM HOLIDAYS, PARUNTHUMPARA - SUPABASE DATABASE SCHEMA & SEED
+-- Run this complete script in Supabase SQL Editor (Dashboard > SQL Editor)
+-- ====================================================================
+
+-- 1. Create Rooms Table (5 1BHK Cottages)
+CREATE TABLE IF NOT EXISTS public.rooms (
+  id TEXT PRIMARY KEY,
+  room_number TEXT NOT NULL UNIQUE,
+  room_type TEXT NOT NULL DEFAULT '1BHK Cottage',
+  capacity INT NOT NULL DEFAULT 4,
+  facilities TEXT[] DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'Available',
+  price_per_night NUMERIC NOT NULL DEFAULT 3500,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Create Guests Master Table
+CREATE TABLE IF NOT EXISTS public.guests (
+  id TEXT PRIMARY KEY,
+  full_name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  email TEXT,
+  address TEXT,
+  nationality TEXT NOT NULL DEFAULT 'Indian',
+  id_document_type TEXT NOT NULL DEFAULT 'Aadhaar',
+  id_document_number TEXT NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Create Bookings Table
+CREATE TABLE IF NOT EXISTS public.bookings (
+  id TEXT PRIMARY KEY,
+  booking_ref TEXT NOT NULL UNIQUE,
+  guest_id TEXT NOT NULL REFERENCES public.guests(id) ON DELETE CASCADE,
+  guest_name TEXT NOT NULL,
+  room_id TEXT NOT NULL REFERENCES public.rooms(id) ON DELETE CASCADE,
+  room_number TEXT NOT NULL,
+  check_in_date DATE NOT NULL,
+  check_out_date DATE NOT NULL,
+  num_guests INT NOT NULL DEFAULT 2,
+  status TEXT NOT NULL DEFAULT 'Confirmed',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Create Documents Table (ID Proof Archives)
+CREATE TABLE IF NOT EXISTS public.documents (
+  id TEXT PRIMARY KEY,
+  guest_id TEXT NOT NULL REFERENCES public.guests(id) ON DELETE CASCADE,
+  guest_name TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  file_type TEXT NOT NULL,
+  file_size TEXT NOT NULL,
+  uploaded_by TEXT DEFAULT 'Staff',
+  uploaded_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. Create Staff Accounts Table
+CREATE TABLE IF NOT EXISTS public.staff_list (
+  id TEXT PRIMARY KEY,
+  full_name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'staff',
+  title TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT,
+  status TEXT NOT NULL DEFAULT 'Active',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 6. Enable Row Level Security & Allow Anonymous Read/Write Access for Staff App
+ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.guests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.staff_list ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon read write rooms" ON public.rooms FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow anon read write guests" ON public.guests FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow anon read write bookings" ON public.bookings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow anon read write documents" ON public.documents FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow anon read write staff_list" ON public.staff_list FOR ALL USING (true) WITH CHECK (true);
+
+-- 7. Setup Storage Bucket for Guest ID Documents
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('guest-documents', 'guest-documents', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Allow storage read write" ON storage.objects
+FOR ALL USING (bucket_id = 'guest-documents') WITH CHECK (bucket_id = 'guest-documents');
+
+-- ====================================================================
+-- SEED INITIAL DATA (SOMAJAM HOLIDAYS 5 1BHK ROOMS & RECORDS)
+-- ====================================================================
+
+-- Seed Rooms (No. 1 to No. 5)
+INSERT INTO public.rooms (id, room_number, room_type, capacity, facilities, status, price_per_night) VALUES
+('room-1', 'No. 1', '1BHK Cottage', 4, ARRAY['Swimming Pool Access', 'Free Wi-Fi', 'EV Charging', 'Kitchenette', 'Audio System', 'Grilling Area'], 'Available', 3500),
+('room-2', 'No. 2', '1BHK Cottage', 4, ARRAY['Swimming Pool Access', 'Free Wi-Fi', 'EV Charging', 'Kitchenette', 'Valley View Patio', 'Campfire Zone'], 'Occupied', 3500),
+('room-3', 'No. 3', '1BHK Cottage', 4, ARRAY['Swimming Pool Access', 'Free Wi-Fi', 'EV Charging', 'Kitchenette', 'Private Balcony', 'Hot Shower'], 'Occupied', 3500),
+('room-4', 'No. 4', '1BHK Cottage', 4, ARRAY['Swimming Pool Access', 'Free Wi-Fi', 'EV Charging', 'Kitchenette', 'Drivers Lounge Access', 'Audio System'], 'Available', 3500),
+('room-5', 'No. 5', '1BHK Cottage', 5, ARRAY['Swimming Pool Access', 'Free Wi-Fi', 'EV Charging', 'Full Kitchen', 'Campfire Area', 'Mountain View'], 'Available', 4000)
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed Guests
+INSERT INTO public.guests (id, full_name, phone, email, address, nationality, id_document_type, id_document_number, notes) VALUES
+('gst-101', 'Rajesh Kumar', '+91 98470 12345', 'rajesh.k@gmail.com', 'Panampilly Nagar, Kochi, Kerala', 'Indian', 'Aadhaar', '5489 1234 8901', 'Arriving around 4:00 PM. Requested tea kit.'),
+('gst-102', 'Sarah Jenkins', '+44 7700 900077', 'sarah.jenkins@outlook.com', '24 Kensington High St, London, UK', 'British', 'Passport', 'GB98234109', 'Vegetarian breakfast. Interested in hill trek.'),
+('gst-103', 'Dr. Ananya Roy', '+91 98300 45678', 'ananya.roy@aiims.edu', 'Salt Lake City, Kolkata, West Bengal', 'Indian', 'Aadhaar', '7812 6543 9012', 'Needs fast Wi-Fi for remote work.')
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed Bookings
+INSERT INTO public.bookings (id, booking_ref, guest_id, guest_name, room_id, room_number, check_in_date, check_out_date, num_guests, status, notes) VALUES
+('bkg-001', 'SJM-2026-001', 'gst-102', 'Sarah Jenkins', 'room-2', 'No. 2', '2026-08-17', '2026-08-20', 2, 'Checked In', 'Checked in at 11:30 AM. Passport scanned.'),
+('bkg-002', 'SJM-2026-002', 'gst-103', 'Dr. Ananya Roy', 'room-3', 'No. 3', '2026-08-17', '2026-08-19', 1, 'Checked In', 'Checked in early at 10:00 AM.'),
+('bkg-003', 'SJM-2026-003', 'gst-101', 'Rajesh Kumar', 'room-1', 'No. 1', '2026-08-17', '2026-08-18', 1, 'Confirmed', 'Confirmed via phone. Expected check-in at 4:00 PM.')
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed Staff
+INSERT INTO public.staff_list (id, full_name, role, title, email, phone, status) VALUES
+('stf-001', 'Somajam Management Team', 'admin', 'Property Manager', 'somajamholidays@gmail.com', '+91 92499 59035', 'Active'),
+('stf-002', 'Front Desk Staff', 'staff', 'Guest Associate', 'help@somajamholidays.com', '+91 92499 59035', 'Active')
+ON CONFLICT (id) DO NOTHING;
