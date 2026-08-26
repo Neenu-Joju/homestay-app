@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Component } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/layout/Sidebar';
@@ -11,6 +11,51 @@ import { Guests } from './pages/Guests';
 import { Bookings } from './pages/Bookings';
 import { Rooms } from './pages/Rooms';
 import { ReportsSettings } from './pages/ReportsSettings';
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Unhandled App Error:', error, errorInfo);
+  }
+
+  handleReset = () => {
+    localStorage.clear();
+    window.location.href = '/';
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 text-center">
+          <div className="max-w-md p-8 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 mx-auto flex items-center justify-center font-bold text-lg">
+              ⚠️
+            </div>
+            <h2 className="text-xl font-bold text-slate-100">Session Error Occurred</h2>
+            <p className="text-xs text-slate-400">
+              An unexpected error occurred while loading your session. Click below to clear stored cache and sign in fresh.
+            </p>
+            <button
+              onClick={this.handleReset}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white text-xs font-bold shadow-lg"
+            >
+              Reset Session & Sign In
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function AppLayout() {
   const { isAuthenticated } = useApp();
@@ -56,10 +101,12 @@ function AppLayout() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <BrowserRouter>
-        <AppLayout />
-      </BrowserRouter>
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <BrowserRouter>
+          <AppLayout />
+        </BrowserRouter>
+      </AppProvider>
+    </ErrorBoundary>
   );
 }

@@ -11,18 +11,30 @@ import {
 const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
-  // Persistent Auth State
+  // Persistent Auth State (Safely wrapped in try/catch)
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return localStorage.getItem('somajam_auth') === 'true';
+    try {
+      return localStorage.getItem('somajam_auth') === 'true';
+    } catch (e) {
+      return false;
+    }
   });
 
   // Always Unified Admin Role
   const [currentRole] = useState('admin');
   const [currentUser, setCurrentUser] = useState(() => {
-    const savedUser = localStorage.getItem('somajam_user');
-    return savedUser
-      ? JSON.parse(savedUser)
-      : { id: 'stf-admin', name: 'Somajam Admin', username: 'admin', role: 'admin' };
+    try {
+      const savedUser = localStorage.getItem('somajam_user');
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        if (parsed && typeof parsed === 'object' && parsed.name) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      // Catch any invalid JSON in localStorage
+    }
+    return { id: 'stf-admin', name: 'Somajam Admin', username: 'admin', role: 'admin' };
   });
 
   // Login Handler
