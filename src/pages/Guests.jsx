@@ -37,15 +37,22 @@ export const Guests = () => {
   // Active Detail Tab inside Drawer Modal
   const [detailTab, setDetailTab] = useState('info'); // 'info' | 'history' | 'docs'
 
-  // Filtered Guests list
-  const filteredGuests = guests.filter((g) => {
-    const matchesSearch =
-      g.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      g.phone.includes(searchTerm) ||
-      g.nationality.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      g.id_document_number.toLowerCase().includes(searchTerm.toLowerCase());
+  // Filtered Guests list (Null-safe for all fields)
+  const filteredGuests = (guests || []).filter((g) => {
+    if (!g) return false;
+    const fullName = (g.full_name || '').toLowerCase();
+    const phone = g.phone || '';
+    const nationality = (g.nationality || '').toLowerCase();
+    const idDocNum = (g.id_document_number || '').toLowerCase();
+    const search = (searchTerm || '').toLowerCase();
 
-    const guestDocs = documents.filter((d) => d.guest_id === g.id);
+    const matchesSearch =
+      fullName.includes(search) ||
+      phone.includes(search) ||
+      nationality.includes(search) ||
+      idDocNum.includes(search);
+
+    const guestDocs = (documents || []).filter((d) => d.guest_id === g.id);
     if (docFilter === 'has_id') return matchesSearch && guestDocs.length > 0;
     if (docFilter === 'missing_id') return matchesSearch && guestDocs.length === 0;
     return matchesSearch;
@@ -150,10 +157,10 @@ export const Guests = () => {
                       <td className="p-4">
                         <div className="flex items-center gap-1.5">
                           <Globe className="w-3 h-3 text-emerald-400" />
-                          <span>{g.nationality}</span>
+                          <span>{g.nationality || 'Indian'}</span>
                         </div>
                         <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                          {g.id_document_type}: {g.id_document_number}
+                          {g.id_document_type || 'ID'}: {g.id_document_number || 'Pending Check-In'}
                         </div>
                       </td>
                       <td className="p-4">
