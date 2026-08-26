@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 export const Dashboard = () => {
-  const { bookings, rooms, guests, documents } = useApp();
+  const { bookings = [], rooms = [], guests = [], documents = [] } = useApp();
 
   const [activeCheckInBooking, setActiveCheckInBooking] = useState(null);
   const [activeCheckOutBooking, setActiveCheckOutBooking] = useState(null);
@@ -31,6 +31,12 @@ export const Dashboard = () => {
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [showDocModal, setShowDocModal] = useState(false);
 
+  // Safe Array Fallbacks
+  const safeBookings = Array.isArray(bookings) ? bookings : [];
+  const safeRooms = Array.isArray(rooms) ? rooms : [];
+  const safeGuests = Array.isArray(guests) ? guests : [];
+  const safeDocuments = Array.isArray(documents) ? documents : [];
+
   // Today's Date calculation (Matches current real date or seed date)
   const realTodayStr = new Date().toISOString().split('T')[0];
   const seedTodayStr = '2026-08-17';
@@ -38,16 +44,16 @@ export const Dashboard = () => {
   const isTodayDate = (dateStr) => dateStr === seedTodayStr || dateStr === realTodayStr;
 
   // Metrics
-  const todayCheckIns = bookings.filter(
-    (b) => isTodayDate(b.check_in_date) && b.status === 'Confirmed'
+  const todayCheckIns = safeBookings.filter(
+    (b) => b && isTodayDate(b.check_in_date) && b.status === 'Confirmed'
   );
-  const todayCheckOuts = bookings.filter(
-    (b) => isTodayDate(b.check_out_date) && b.status === 'Checked In'
+  const todayCheckOuts = safeBookings.filter(
+    (b) => b && isTodayDate(b.check_out_date) && b.status === 'Checked In'
   );
-  const occupiedRooms = rooms.filter((r) => r.status === 'Occupied');
-  const availableRooms = rooms.filter((r) => r.status === 'Available');
-  const upcomingBookings = bookings
-    .filter((b) => b.status === 'Confirmed' && (b.check_in_date >= seedTodayStr || b.check_in_date >= realTodayStr))
+  const occupiedRooms = safeRooms.filter((r) => r && r.status === 'Occupied');
+  const availableRooms = safeRooms.filter((r) => r && r.status === 'Available');
+  const upcomingBookings = safeBookings
+    .filter((b) => b && b.status === 'Confirmed' && (b.check_in_date >= seedTodayStr || b.check_in_date >= realTodayStr))
     .sort((a, b) => new Date(a.check_in_date) - new Date(b.check_in_date));
 
   return (
@@ -137,10 +143,10 @@ export const Dashboard = () => {
           <div>
             <p className="text-xs text-slate-400 font-medium">Occupied Rooms</p>
             <p className="text-2xl font-black text-slate-100 mt-1">
-              {occupiedRooms.length} <span className="text-xs font-normal text-slate-500">/ {rooms.length}</span>
+              {occupiedRooms.length} <span className="text-xs font-normal text-slate-500">/ {safeRooms.length}</span>
             </p>
             <p className="text-[11px] text-rose-400 mt-1">
-              {((occupiedRooms.length / (rooms.length || 1)) * 100).toFixed(0)}% Occupancy
+              {((occupiedRooms.length / (safeRooms.length || 1)) * 100).toFixed(0)}% Occupancy
             </p>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
@@ -186,23 +192,24 @@ export const Dashboard = () => {
           ) : (
             <div className="space-y-3">
               {todayCheckIns.map((b) => {
-                const guestDocs = documents.filter((d) => d.guest_id === b.guest_id);
+                if (!b) return null;
+                const guestDocs = safeDocuments.filter((d) => d && d.guest_id === b.guest_id);
                 return (
                   <div
-                    key={b.id}
+                    key={b.id || Math.random()}
                     className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition-all"
                   >
                     <div>
                       <div className="flex items-center gap-2">
                         <h4 className="font-bold text-xs text-slate-100">
-                          {b.guest_name}
+                          {b.guest_name || 'Guest'}
                         </h4>
                         <span className="text-[10px] font-mono text-slate-500">
                           {b.booking_ref}
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 mt-1">
-                        Room: <strong className="text-slate-200">{b.room_number}</strong> ({b.num_guests} Guests)
+                        Room: <strong className="text-slate-200">{b.room_number}</strong> ({b.num_guests || 1} Guests)
                       </p>
                       {guestDocs.length === 0 && (
                         <p className="text-[10px] text-amber-400 mt-1 flex items-center gap-1">
@@ -244,33 +251,36 @@ export const Dashboard = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              {todayCheckOuts.map((b) => (
-                <div
-                  key={b.id}
-                  className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition-all"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-xs text-slate-100">
-                        {b.guest_name}
-                      </h4>
-                      <span className="text-[10px] font-mono text-slate-500">
-                        {b.booking_ref}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Room: <strong className="text-slate-200">{b.room_number}</strong>
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setActiveCheckOutBooking(b)}
-                    className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md shadow-amber-900/30 shrink-0 flex items-center gap-1.5"
+              {todayCheckOuts.map((b) => {
+                if (!b) return null;
+                return (
+                  <div
+                    key={b.id || Math.random()}
+                    className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition-all"
                   >
-                    <LogOut className="w-3.5 h-3.5" />
-                    Check Out
-                  </button>
-                </div>
-              ))}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-xs text-slate-100">
+                          {b.guest_name || 'Guest'}
+                        </h4>
+                        <span className="text-[10px] font-mono text-slate-500">
+                          {b.booking_ref}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Room: <strong className="text-slate-200">{b.room_number}</strong>
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setActiveCheckOutBooking(b)}
+                      className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md shadow-amber-900/30 shrink-0 flex items-center gap-1.5"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Check Out
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -294,24 +304,27 @@ export const Dashboard = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {upcomingBookings.slice(0, 3).map((b) => (
-            <div
-              key={b.id}
-              className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 hover:border-slate-700 transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono text-emerald-400 font-bold">
-                  {b.booking_ref}
-                </span>
-                <StatusBadge status={b.status} />
+          {upcomingBookings.slice(0, 3).map((b) => {
+            if (!b) return null;
+            return (
+              <div
+                key={b.id || Math.random()}
+                className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 hover:border-slate-700 transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                    {b.booking_ref}
+                  </span>
+                  <StatusBadge status={b.status} />
+                </div>
+                <p className="font-bold text-sm text-slate-100">{b.guest_name || 'Guest'}</p>
+                <div className="text-xs text-slate-400 space-y-0.5">
+                  <p>Room: <strong className="text-slate-300">{b.room_number}</strong></p>
+                  <p>Check-in: <strong className="text-slate-300">{b.check_in_date}</strong></p>
+                </div>
               </div>
-              <p className="font-bold text-sm text-slate-100">{b.guest_name}</p>
-              <div className="text-xs text-slate-400 space-y-0.5">
-                <p>Room: <strong className="text-slate-300">{b.room_number}</strong></p>
-                <p>Check-in: <strong className="text-slate-300">{b.check_in_date}</strong></p>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
