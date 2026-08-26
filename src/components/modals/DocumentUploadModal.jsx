@@ -16,6 +16,7 @@ export const DocumentUploadModal = ({ isOpen, onClose, defaultGuestId = '' }) =>
         showToast('File exceeds 5 MB limit!', 'error');
         return;
       }
+      file.preview_url = URL.createObjectURL(file);
       setSimulatedFile(file);
     }
   };
@@ -36,8 +37,10 @@ export const DocumentUploadModal = ({ isOpen, onClose, defaultGuestId = '' }) =>
       guest_name: guest ? guest.full_name : 'Guest',
       file_name: fileName,
       file_path: `guest-documents/${selectedGuestId}/${Date.now()}_${fileName}`,
-      file_type: simulatedFile ? simulatedFile.type : 'application/pdf',
+      file_type: simulatedFile ? simulatedFile.type : 'image/jpeg',
       file_size: simulatedFile ? `${(simulatedFile.size / (1024 * 1024)).toFixed(1)} MB` : '1.8 MB',
+      preview_url: simulatedFile ? simulatedFile.preview_url : null,
+      rawFile: simulatedFile || null,
     });
 
     setSimulatedFile(null);

@@ -94,11 +94,13 @@ export const GuestModal = ({ isOpen, onClose, guestToEdit = null }) => {
       if (file.size > 5 * 1024 * 1024) {
         showToast(`File "${file.name}" exceeds 5 MB limit!`, 'error');
       } else {
+        const previewUrl = URL.createObjectURL(file);
         validFiles.push({
           id: `staged-${Date.now()}-${Math.random()}`,
           file_name: file.name,
           file_size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-          file_type: file.type || 'application/pdf',
+          file_type: file.type || 'image/jpeg',
+          preview_url: previewUrl,
           rawFile: file,
         });
       }
@@ -106,7 +108,7 @@ export const GuestModal = ({ isOpen, onClose, guestToEdit = null }) => {
 
     if (validFiles.length > 0) {
       setStagedFiles((prev) => [...prev, ...validFiles]);
-      showToast(`Attached ${validFiles.length} file(s) to form`, 'info');
+      showToast(`Attached ${validFiles.length} photo/file(s) to form`, 'info');
     }
   };
 
@@ -138,6 +140,8 @@ export const GuestModal = ({ isOpen, onClose, guestToEdit = null }) => {
           file_path: `guest-documents/${targetGuestId}/${Date.now()}_${stg.file_name}`,
           file_type: stg.file_type,
           file_size: stg.file_size,
+          preview_url: stg.preview_url,
+          rawFile: stg.rawFile,
         });
       });
     }

@@ -1,26 +1,61 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
-import { FileText, Download, ShieldCheck } from 'lucide-react';
+import { FileText, Download, ShieldCheck, Image as ImageIcon, Eye } from 'lucide-react';
 
 export const DocumentViewerModal = ({ isOpen, onClose, doc }) => {
+  const [imageSrc, setImageSrc] = useState(null);
+
+  useEffect(() => {
+    if (!doc) {
+      setImageSrc(null);
+      return;
+    }
+
+    // 1. Direct preview URL if attached in session
+    if (doc.preview_url) {
+      setImageSrc(doc.preview_url);
+    } else if (doc.rawFile && doc.rawFile instanceof File) {
+      // 2. Local File object from device camera / upload
+      const objectUrl = URL.createObjectURL(doc.rawFile);
+      setImageSrc(objectUrl);
+      return () => URL.revokeObjectURL(objectUrl);
+    } else if (doc.data_url) {
+      // 3. Base64 Data URL
+      setImageSrc(doc.data_url);
+    } else if (doc.file_path && (doc.file_path.startsWith('http') || doc.file_path.startsWith('data:'))) {
+      setImageSrc(doc.file_path);
+    } else {
+      setImageSrc(null);
+    }
+  }, [doc]);
+
   if (!doc) return null;
 
-  const isPdf = doc.file_name?.endsWith('.pdf') || doc.file_type === 'application/pdf';
+  const fileName = doc.file_name || 'document';
+  const fileType = doc.file_type || '';
+  const isImage =
+    fileType.startsWith('image/') ||
+    /\.(jpg|jpeg|png|webp|gif|bmp|heic)$/i.test(fileName) ||
+    !!imageSrc;
+
+  const isPdf = fileType === 'application/pdf' || /\.pdf$/i.test(fileName);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Document Preview: ${doc.file_name}`}>
+    <Modal isOpen={isOpen} onClose={onClose} title={`Document Preview: ${fileName}`}>
       <div className="space-y-4">
-        {/* Metadata Header */}
+        {/* Header Details */}
         <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-              <FileText className="w-5 h-5" />
+              {isImage ? <ImageIcon className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
             </div>
             <div>
-              <p className="font-bold text-slate-100">{doc.file_name}</p>
+              <p className="font-bold text-slate-100">{fileName}</p>
               <p className="text-[11px] text-slate-400">
                 Size: <strong className="text-slate-200">{doc.file_size || '1.5 MB'}</strong> | Format:{' '}
-                <span className="uppercase text-emerald-400">{isPdf ? 'PDF Document' : 'Image Scan'}</span>
+                <span className="uppercase text-emerald-400">
+                  {isImage ? 'Photo / Image Scan' : isPdf ? 'PDF Document' : 'ID File'}
+                </span>
               </p>
             </div>
           </div>
@@ -29,38 +64,61 @@ export const DocumentViewerModal = ({ isOpen, onClose, doc }) => {
           </span>
         </div>
 
-        {/* Visual Document Preview Frame */}
-        <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col items-center justify-center min-h-[220px] text-center relative overflow-hidden">
-          {/* Mock document watermarked background */}
-          <div className="absolute inset-0 bg-gradient-to-b from-slate-900/60 to-slate-950 flex items-center justify-center opacity-40 pointer-events-none">
-            <span className="text-4xl font-black text-slate-700 tracking-widest uppercase rotate-[-15deg]">
-              OFFICIAL ID PROOF
-            </span>
-          </div>
-
-          <div className="relative z-10 space-y-3 max-w-sm">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center text-emerald-400 shadow-xl">
-              <FileText className="w-8 h-8" />
-            </div>
-            <div>
-              <h4 className="font-bold text-sm text-slate-100">{doc.guest_name ? `${doc.guest_name}'s Identification` : doc.file_name}</h4>
-              <p className="text-xs text-slate-400 mt-1">
-                Government Verified ID Attachment stored securely in <code>guest-documents</code> bucket.
+        {/* Visual Document & Photo Display Area */}
+        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col items-center justify-center min-h-[260px] text-center relative overflow-hidden">
+          {imageSrc ? (
+            <div className="space-y-2 w-full flex flex-col items-center">
+              <img
+                src={imageSrc}
+                alt={fileName}
+                className="max-h-[380px] max-w-full rounded-xl object-contain shadow-2xl border border-slate-800"
+                onError={() => setImageSrc(null)}
+              />
+              <p className="text-[11px] text-slate-400 font-mono flex items-center gap-1 mt-1">
+                <Eye className="w-3 h-3 text-emerald-400" /> High-Resolution Photo Preview
               </p>
             </div>
-          </div>
+          ) : (
+            <div className="relative z-10 space-y-3 max-w-sm py-6">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center text-emerald-400 shadow-xl">
+                {isImage ? <ImageIcon className="w-8 h-8" /> : <FileText className="w-8 h-8" />}
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-100">
+                  {doc.guest_name ? `${doc.guest_name}'s Identification` : fileName}
+                </h4>
+                <p className="text-xs text-slate-400 mt-1">
+                  Government Verified ID Attachment stored securely in <code>guest-documents</code> bucket.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Actions Footer */}
+        {/* Footer Actions */}
         <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-          <button
-            type="button"
-            onClick={() => alert(`Simulating downloading ${doc.file_name}`)}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center gap-1.5 transition-all"
-          >
-            <Download className="w-4 h-4 text-emerald-400" />
-            Download File
-          </button>
+          {imageSrc ? (
+            <a
+              href={imageSrc}
+              download={fileName}
+              target="_blank"
+              rel="noreferrer"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center gap-1.5 transition-all"
+            >
+              <Download className="w-4 h-4 text-emerald-400" />
+              Download Full Image
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={() => alert(`Downloading ${fileName}`)}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center gap-1.5 transition-all"
+            >
+              <Download className="w-4 h-4 text-emerald-400" />
+              Download File
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onClose}
