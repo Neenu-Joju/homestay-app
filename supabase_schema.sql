@@ -58,17 +58,31 @@ CREATE TABLE IF NOT EXISTS public.documents (
   uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Create Staff Accounts Table
+-- 5. Create Staff Directory Table
 CREATE TABLE IF NOT EXISTS public.staff_list (
   id TEXT PRIMARY KEY,
   full_name TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'staff',
-  title TEXT NOT NULL,
   email TEXT NOT NULL,
   phone TEXT,
+  role TEXT NOT NULL DEFAULT 'admin',
+  title TEXT NOT NULL DEFAULT 'Operations Staff',
   status TEXT NOT NULL DEFAULT 'Active',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 6. Create Admin Users Table (For Supabase Login Credentials Management)
+CREATE TABLE IF NOT EXISTS public.admin_users (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  password TEXT NOT NULL,
+  full_name TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Seed Default Admin User
+INSERT INTO public.admin_users (id, username, password, full_name)
+VALUES ('adm-001', 'admin', 'somajam2026', 'Somajam Admin')
+ON CONFLICT (username) DO NOTHING;
 
 -- 6. Enable Row Level Security & Allow Anonymous Read/Write Access for Staff App
 ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
@@ -76,6 +90,7 @@ ALTER TABLE public.guests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.staff_list ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow anon read write rooms" ON public.rooms FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow anon read write guests" ON public.guests FOR ALL USING (true) WITH CHECK (true);

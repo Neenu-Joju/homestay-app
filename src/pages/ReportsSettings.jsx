@@ -83,16 +83,12 @@ export const ReportsSettings = () => {
           </p>
         </div>
 
-        {/* Role Toggle Switcher */}
-        <button
-          onClick={toggleRole}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition-all shadow-md"
-        >
+        {/* Admin Access Badge */}
+        <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-200">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Active Role:</span>
-          <span className="text-emerald-400 font-bold uppercase">{currentRole}</span>
-          <span className="text-slate-400 text-[10px] ml-1">(Click to switch)</span>
-        </button>
+          <span>System Access:</span>
+          <span className="text-emerald-400 font-bold uppercase">Admin Full Access</span>
+        </div>
       </div>
 
       {/* Tabs Switcher */}

@@ -11,13 +11,71 @@ import {
 const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
-  // User Role: 'admin' | 'staff'
-  const [currentRole, setCurrentRole] = useState('admin');
-  const [currentUser, setCurrentUser] = useState({
-    id: 'stf-001',
-    name: 'Somajam Admin',
-    role: 'admin',
+  // Persistent Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('somajam_auth') === 'true';
   });
+
+  // Always Unified Admin Role
+  const [currentRole] = useState('admin');
+  const [currentUser, setCurrentUser] = useState(() => {
+    const savedUser = localStorage.getItem('somajam_user');
+    return savedUser
+      ? JSON.parse(savedUser)
+      : { id: 'stf-admin', name: 'Somajam Admin', username: 'admin', role: 'admin' };
+  });
+
+  // Login Handler
+  const login = async (username, password) => {
+    const lowerUser = username.toLowerCase().trim();
+
+    // Check default credentials (admin / somajam2026 or admin / admin123 or admin / password123)
+    const isDefaultMatch =
+      (lowerUser === 'admin' || lowerUser === 'somajam') &&
+      (password === 'somajam2026' || password === 'admin123' || password === 'password123' || password === 'admin');
+
+    let isValid = isDefaultMatch;
+    let displayName = lowerUser === 'somajam' ? 'Somajam Manager' : 'Somajam Admin';
+
+    // Check optional Supabase admin_users table
+    if (!isValid) {
+      try {
+        const { data, error } = await supabase
+          .from('admin_users')
+          .select('*')
+          .eq('username', lowerUser)
+          .eq('password', password)
+          .single();
+
+        if (!error && data) {
+          isValid = true;
+          displayName = data.full_name || data.username || 'Somajam Admin';
+        }
+      } catch (err) {
+        // Fallback catch
+      }
+    }
+
+    if (isValid) {
+      const userObj = { id: 'stf-admin', name: displayName, username: lowerUser, role: 'admin' };
+      setIsAuthenticated(true);
+      setCurrentUser(userObj);
+      localStorage.setItem('somajam_auth', 'true');
+      localStorage.setItem('somajam_user', JSON.stringify(userObj));
+      showToast(`Welcome back, ${displayName}!`, 'success');
+      return { success: true };
+    } else {
+      return { success: false, message: 'Invalid Username or Password' };
+    }
+  };
+
+  // Logout Handler
+  const logout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('somajam_auth');
+    localStorage.removeItem('somajam_user');
+    showToast('Logged out successfully', 'info');
+  };
 
   // Master States
   const [rooms, setRooms] = useState(initialRooms);
@@ -420,6 +478,9 @@ export const AppProvider = ({ children }) => {
   return (
     <AppContext.Provider
       value={{
+        isAuthenticated,
+        login,
+        logout,
         currentRole,
         currentUser,
         toggleRole,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Menu, Shield, User, Clock, Bell } from 'lucide-react';
+import { Menu, Shield, User, Clock, Bell, LogOut } from 'lucide-react';
 
 export const Header = ({ setMobileOpen }) => {
   const { currentRole, currentUser, toggleRole } = useApp();
@@ -55,38 +55,37 @@ export const Header = ({ setMobileOpen }) => {
         </div>
       </div>
 
-      {/* Right section: Role Toggle & User Badge */}
+      {/* Right section: Admin Badge & Logout */}
       <div className="flex items-center gap-3 sm:gap-4">
-        {/* Interactive Role Switcher Toggle */}
-        <button
-          onClick={toggleRole}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-800 text-xs font-semibold text-slate-200 hover:border-emerald-500/50 transition-all shadow-sm group"
-          title="Click to toggle between Admin and Staff permissions"
-        >
-          <Shield className="w-3.5 h-3.5 text-emerald-400 group-hover:rotate-12 transition-transform" />
-          <span>Switch Role:</span>
-          <span className="text-emerald-400 underline decoration-dotted">
-            {currentRole === 'admin' ? 'Staff Mode' : 'Admin Mode'}
-          </span>
-        </button>
-
         {/* User Profile Badge */}
-        <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-slate-800">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs ring-2 ring-slate-800">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-600 to-teal-500 flex items-center justify-center text-white font-bold text-xs ring-2 ring-emerald-500/30">
             {currentUser.name
-              .split(' ')
-              .map((n) => n[0])
-              .join('')}
+              ? currentUser.name
+                  .split(' ')
+                  .map((n) => n[0])
+                  .join('')
+              : 'SA'}
           </div>
           <div className="hidden md:block text-left">
             <p className="text-xs font-semibold text-slate-200 leading-tight">
-              {currentUser.name}
+              {currentUser.name || 'Somajam Admin'}
             </p>
-            <p className="text-[10px] text-slate-400 capitalize">
-              {currentRole} Access
+            <p className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider">
+              Admin Access
             </p>
           </div>
         </div>
+
+        {/* Logout Button */}
+        <button
+          onClick={logout}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-semibold transition-all shadow-sm group"
+          title="Sign out of Admin Portal"
+        >
+          <LogOut className="w-3.5 h-3.5 text-rose-400 group-hover:-translate-x-0.5 transition-transform" />
+          <span className="hidden xs:inline">Sign Out</span>
+        </button>
       </div>
     </header>
   );

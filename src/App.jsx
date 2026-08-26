@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AppProvider } from './context/AppContext';
+import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { Toast } from './components/common/Toast';
 
+import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Guests } from './pages/Guests';
 import { Bookings } from './pages/Bookings';
@@ -12,7 +13,17 @@ import { Rooms } from './pages/Rooms';
 import { ReportsSettings } from './pages/ReportsSettings';
 
 function AppLayout() {
+  const { isAuthenticated } = useApp();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <Toast />
+        <Login />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans antialiased">
