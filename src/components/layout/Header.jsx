@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Menu, Shield, User, Clock, Bell, LogOut } from 'lucide-react';
 
 export const Header = ({ setMobileOpen }) => {
-  const { currentRole, currentUser, toggleRole } = useApp();
+  const { currentRole, currentUser = {}, logout } = useApp();
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {

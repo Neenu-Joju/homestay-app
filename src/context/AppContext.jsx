@@ -495,6 +495,7 @@ export const AppProvider = ({ children }) => {
         logout,
         currentRole,
         currentUser,
+        toggleRole: () => {},
         rooms,
         addRoom,
         updateRoomStatus,

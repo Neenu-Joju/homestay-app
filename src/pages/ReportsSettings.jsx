@@ -25,7 +25,6 @@ export const ReportsSettings = () => {
     addStaff,
     currentRole,
     currentUser,
-    toggleRole,
     showToast,
   } = useApp();
 
