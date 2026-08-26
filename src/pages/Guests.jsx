@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export const Guests = () => {
-  const { guests, bookings, documents, deleteGuest, currentRole } = useApp();
+  const { guests = [], bookings = [], documents = [], deleteGuest, currentRole } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [docFilter, setDocFilter] = useState('all');
@@ -36,9 +36,15 @@ export const Guests = () => {
 
   // Active Detail Tab inside Drawer Modal
   const [detailTab, setDetailTab] = useState('info'); // 'info' | 'history' | 'docs'
+  const [previewDoc, setPreviewDoc] = useState(null);
+
+  // Safe arrays
+  const safeGuests = Array.isArray(guests) ? guests : [];
+  const safeBookings = Array.isArray(bookings) ? bookings : [];
+  const safeDocuments = Array.isArray(documents) ? documents : [];
 
   // Filtered Guests list (Null-safe for all fields)
-  const filteredGuests = (guests || []).filter((g) => {
+  const filteredGuests = safeGuests.filter((g) => {
     if (!g) return false;
     const fullName = (g.full_name || '').toLowerCase();
     const phone = g.phone || '';
@@ -52,7 +58,7 @@ export const Guests = () => {
       nationality.includes(search) ||
       idDocNum.includes(search);
 
-    const guestDocs = (documents || []).filter((d) => d.guest_id === g.id);
+    const guestDocs = safeDocuments.filter((d) => d && d.guest_id === g.id);
     if (docFilter === 'has_id') return matchesSearch && guestDocs.length > 0;
     if (docFilter === 'missing_id') return matchesSearch && guestDocs.length === 0;
     return matchesSearch;
@@ -105,7 +111,7 @@ export const Guests = () => {
             onChange={(e) => setDocFilter(e.target.value)}
             className="px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-emerald-500"
           >
-            <option value="all">All Guests ({guests.length})</option>
+            <option value="all">All Guests ({safeGuests.length})</option>
             <option value="has_id">Has ID Uploaded</option>
             <option value="missing_id">Missing ID Document</option>
           </select>
@@ -135,19 +141,20 @@ export const Guests = () => {
                 </tr>
               ) : (
                 filteredGuests.map((g) => {
-                  const guestBookings = bookings.filter((b) => b.guest_id === g.id);
-                  const guestDocs = documents.filter((d) => d.guest_id === g.id);
+                  if (!g) return null;
+                  const guestBookings = safeBookings.filter((b) => b && b.guest_id === g.id);
+                  const guestDocs = safeDocuments.filter((d) => d && d.guest_id === g.id);
 
                   return (
-                    <tr key={g.id} className="hover:bg-slate-800/40 transition-colors">
+                    <tr key={g.id || Math.random()} className="hover:bg-slate-800/40 transition-colors">
                       <td className="p-4">
-                        <div className="font-bold text-slate-100">{g.full_name}</div>
+                        <div className="font-bold text-slate-100">{g.full_name || 'Unnamed Guest'}</div>
                         <div className="text-[10px] text-slate-500 mt-0.5">{g.address || 'Address not listed'}</div>
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-1.5 text-slate-300">
                           <Phone className="w-3 h-3 text-slate-500" />
-                          {g.phone}
+                          {g.phone || 'No Phone'}
                         </div>
                         <div className="flex items-center gap-1.5 text-slate-400 text-[11px] mt-0.5">
                           <Mail className="w-3 h-3 text-slate-500" />
@@ -238,7 +245,7 @@ export const Guests = () => {
         <Modal
           isOpen={!!viewingGuest}
           onClose={() => setViewingGuest(null)}
-          title={`Guest Details: ${viewingGuest.full_name}`}
+          title={`Guest Details: ${viewingGuest.full_name || 'Guest'}`}
         >
           {/* Detail Tabs */}
           <div className="flex border-b border-slate-800 mb-4">
@@ -260,7 +267,7 @@ export const Guests = () => {
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              Stays History ({bookings.filter((b) => b.guest_id === viewingGuest.id).length})
+              Stays History ({safeBookings.filter((b) => b && b.guest_id === viewingGuest.id).length})
             </button>
             <button
               onClick={() => setDetailTab('docs')}
@@ -270,7 +277,7 @@ export const Guests = () => {
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              Documents ({documents.filter((d) => d.guest_id === viewingGuest.id).length})
+              Documents ({safeDocuments.filter((d) => d && d.guest_id === viewingGuest.id).length})
             </button>
           </div>
 
@@ -280,7 +287,7 @@ export const Guests = () => {
               <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-slate-950 border border-slate-800">
                 <div>
                   <span className="text-slate-500 block">Phone</span>
-                  <span className="font-semibold text-slate-200">{viewingGuest.phone}</span>
+                  <span className="font-semibold text-slate-200">{viewingGuest.phone || 'N/A'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Email</span>
@@ -288,12 +295,12 @@ export const Guests = () => {
                 </div>
                 <div>
                   <span className="text-slate-500 block">Nationality</span>
-                  <span className="font-semibold text-emerald-400">{viewingGuest.nationality}</span>
+                  <span className="font-semibold text-emerald-400">{viewingGuest.nationality || 'Indian'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">ID Document</span>
                   <span className="font-mono text-slate-200">
-                    {viewingGuest.id_document_type}: {viewingGuest.id_document_number}
+                    {viewingGuest.id_document_type || 'ID'}: {viewingGuest.id_document_number || 'Pending Check-In'}
                   </span>
                 </div>
               </div>
@@ -311,11 +318,11 @@ export const Guests = () => {
           {/* Tab 2: History */}
           {detailTab === 'history' && (
             <div className="space-y-3 text-xs">
-              {bookings.filter((b) => b.guest_id === viewingGuest.id).length === 0 ? (
+              {safeBookings.filter((b) => b && b.guest_id === viewingGuest.id).length === 0 ? (
                 <p className="text-slate-500 text-center py-6">No previous stays recorded.</p>
               ) : (
-                bookings
-                  .filter((b) => b.guest_id === viewingGuest.id)
+                safeBookings
+                  .filter((b) => b && b.guest_id === viewingGuest.id)
                   .map((b) => (
                     <div
                       key={b.id}
@@ -351,13 +358,13 @@ export const Guests = () => {
                 Upload New Document Attachment
               </button>
 
-              {documents.filter((d) => d.guest_id === viewingGuest.id).length === 0 ? (
+              {safeDocuments.filter((d) => d && d.guest_id === viewingGuest.id).length === 0 ? (
                 <p className="text-slate-500 text-center py-6">
                   No documents attached for this guest yet.
                 </p>
               ) : (
-                documents
-                  .filter((d) => d.guest_id === viewingGuest.id)
+                safeDocuments
+                  .filter((d) => d && d.guest_id === viewingGuest.id)
                   .map((d) => (
                     <div
                       key={d.id}
