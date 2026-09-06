@@ -6,6 +6,8 @@ import {
   initialBookings,
   initialDocuments,
   initialStaff,
+  initialExpensePayers,
+  initialExpenses,
 } from '../data/initialData';
 
 const AppContext = createContext();
@@ -96,6 +98,29 @@ export const AppProvider = ({ children }) => {
   const [documents, setDocuments] = useState(initialDocuments);
   const [staffList, setStaffList] = useState(initialStaff);
 
+  // Expense Payers & Expenses Persistent State
+  const [expensePayers, setExpensePayers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('somajam_expense_payers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return initialExpensePayers;
+  });
+
+  const [expenses, setExpenses] = useState(() => {
+    try {
+      const saved = localStorage.getItem('somajam_expenses');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return initialExpenses;
+  });
+
   // Toast Notification State
   const [toast, setToast] = useState(null);
 
@@ -138,6 +163,26 @@ export const AppProvider = ({ children }) => {
         const { data: staffData, error: staffErr } = await supabase.from('staff_list').select('*');
         if (!staffErr && staffData && staffData.length > 0) {
           setStaffList(staffData);
+        }
+
+        // Fetch Expense Payers (Sync with Supabase if table exists and local cache is unpopulated)
+        const hasLocalPayers = localStorage.getItem('somajam_expense_payers');
+        if (!hasLocalPayers) {
+          const { data: payersData, error: payersErr } = await supabase.from('expense_payers').select('*');
+          if (!payersErr && payersData && payersData.length > 0) {
+            setExpensePayers(payersData);
+            try { localStorage.setItem('somajam_expense_payers', JSON.stringify(payersData)); } catch(e){}
+          }
+        }
+
+        // Fetch Expenses
+        const hasLocalExpenses = localStorage.getItem('somajam_expenses');
+        if (!hasLocalExpenses) {
+          const { data: expensesData, error: expensesErr } = await supabase.from('expenses').select('*');
+          if (!expensesErr && expensesData && expensesData.length > 0) {
+            setExpenses(expensesData);
+            try { localStorage.setItem('somajam_expenses', JSON.stringify(expensesData)); } catch(e){}
+          }
         }
       } catch (err) {
         console.warn('Supabase fetch notice: using in-memory state fallback until schema is executed.');
@@ -487,6 +532,152 @@ export const AppProvider = ({ children }) => {
     showToast(`Staff account for ${newStaff.full_name} created`);
   };
 
+  const [activeExpenseUser, setActiveExpenseUser] = useState(() => {
+    return initialExpensePayers[1] || initialExpensePayers[0] || null;
+  });
+
+  // --- EXPENSE PAYER HANDLERS ---
+  const addExpensePayer = async (payerData) => {
+    const newPayer = {
+      id: `pyr-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      ...payerData,
+    };
+
+    setExpensePayers((prev) => {
+      const updated = [...prev, newPayer];
+      try { localStorage.setItem('somajam_expense_payers', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
+
+    try {
+      await supabase.from('expense_payers').insert([newPayer]);
+    } catch (e) {
+      console.error(e);
+    }
+    showToast(`Expense account for ${newPayer.name} added`);
+    return newPayer;
+  };
+
+  const deleteExpensePayer = async (payerId) => {
+    const linkedExpenses = expenses.filter((e) => e && e.payer_id === payerId);
+    if (linkedExpenses.length > 0) {
+      const payerObj = expensePayers.find((p) => p.id === payerId);
+      showToast(
+        `Cannot Delete User: ${linkedExpenses.length} transaction(s) are recorded under "${payerObj ? payerObj.name : 'this user'}". Delete those transactions first!`,
+        'error'
+      );
+      return false;
+    }
+
+    setExpensePayers((prev) => {
+      const updated = prev.filter((p) => p.id !== payerId);
+      try { localStorage.setItem('somajam_expense_payers', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
+
+    try {
+      await supabase.from('expense_payers').delete().eq('id', payerId);
+    } catch (e) {
+      console.error(e);
+    }
+    showToast('Expense account removed', 'info');
+    return true;
+  };
+
+  // --- EXPENSE HANDLERS ---
+  const addExpense = async (expenseData) => {
+    const newExpense = {
+      id: `exp-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      ...expenseData,
+    };
+
+    setExpenses((prev) => {
+      const updated = [newExpense, ...prev];
+      try { localStorage.setItem('somajam_expenses', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
+
+    try {
+      await supabase.from('expenses').insert([newExpense]);
+    } catch (e) {
+      console.error(e);
+    }
+    showToast(`Expense ₹${newExpense.amount} logged for ${newExpense.payer_name}`);
+    return newExpense;
+  };
+
+  const updateExpense = async (expenseId, updatedData) => {
+    setExpenses((prev) => {
+      const updated = prev.map((e) => (e.id === expenseId ? { ...e, ...updatedData } : e));
+      try { localStorage.setItem('somajam_expenses', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
+
+    try {
+      await supabase.from('expenses').update(updatedData).eq('id', expenseId);
+    } catch (e) {
+      console.error(e);
+    }
+    showToast('Expense entry updated');
+  };
+
+  const deleteExpense = async (expenseId, actingUser = null) => {
+    const targetExpense = expenses.find((e) => e.id === expenseId);
+    if (!targetExpense) return false;
+
+    // Verify user authorization: only the user recorded on the expense can delete it
+    const userToVerify = actingUser || activeExpenseUser;
+    if (
+      userToVerify &&
+      userToVerify.id !== targetExpense.payer_id &&
+      userToVerify.name !== targetExpense.payer_name
+    ) {
+      showToast(
+        `Permission Blocked: Only ${targetExpense.payer_name} can delete transactions recorded against their name.`,
+        'error'
+      );
+      return false;
+    }
+
+    setExpenses((prev) => {
+      const updated = prev.filter((e) => e.id !== expenseId);
+      try { localStorage.setItem('somajam_expenses', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
+
+    try {
+      await supabase.from('expenses').delete().eq('id', expenseId);
+    } catch (e) {
+      console.error(e);
+    }
+    showToast('Expense entry removed', 'info');
+    return true;
+  };
+
+  const toggleReimbursementStatus = async (expenseId) => {
+    let nextStatus = 'Settled';
+    setExpenses((prev) => {
+      const updated = prev.map((e) => {
+        if (e.id === expenseId) {
+          nextStatus = e.reimbursement_status === 'Pending Reimbursement' ? 'Settled' : 'Pending Reimbursement';
+          return { ...e, reimbursement_status: nextStatus };
+        }
+        return e;
+      });
+      try { localStorage.setItem('somajam_expenses', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
+
+    try {
+      await supabase.from('expenses').update({ reimbursement_status: nextStatus }).eq('id', expenseId);
+    } catch (e) {
+      console.error(e);
+    }
+    showToast(`Expense marked as ${nextStatus}`);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -513,6 +704,16 @@ export const AppProvider = ({ children }) => {
         deleteDocument,
         staffList,
         addStaff,
+        expensePayers,
+        addExpensePayer,
+        deleteExpensePayer,
+        expenses,
+        addExpense,
+        updateExpense,
+        deleteExpense,
+        toggleReimbursementStatus,
+        activeExpenseUser,
+        setActiveExpenseUser,
         toast,
         showToast,
       }}

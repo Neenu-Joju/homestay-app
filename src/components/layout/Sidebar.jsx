@@ -6,6 +6,7 @@ import {
   Users,
   CalendarCheck,
   BedDouble,
+  Wallet,
   BarChart3,
   Home,
   ShieldCheck,
@@ -40,6 +41,12 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
       path: '/rooms',
       icon: BedDouble,
       desc: 'Live Status & Inventory',
+    },
+    {
+      name: 'Expense Tracker',
+      path: '/expenses',
+      icon: Wallet,
+      desc: 'Directors & Shared Ledger',
     },
     {
       name: 'Reports & Settings',

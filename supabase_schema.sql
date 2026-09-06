@@ -98,7 +98,39 @@ CREATE POLICY "Allow anon read write bookings" ON public.bookings FOR ALL USING 
 CREATE POLICY "Allow anon read write documents" ON public.documents FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow anon read write staff_list" ON public.staff_list FOR ALL USING (true) WITH CHECK (true);
 
--- 7. Setup Storage Bucket for Guest ID Documents
+-- 7. Create Expense Payers Table
+CREATE TABLE IF NOT EXISTS public.expense_payers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  group_tag TEXT NOT NULL DEFAULT 'Director', -- 'Director', 'Caretaker', 'Common Pool', 'Partner'
+  phone TEXT,
+  upi_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 8. Create Expenses Table
+CREATE TABLE IF NOT EXISTS public.expenses (
+  id TEXT PRIMARY KEY,
+  expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  payer_id TEXT NOT NULL REFERENCES public.expense_payers(id) ON DELETE CASCADE,
+  payer_name TEXT NOT NULL,
+  category TEXT NOT NULL, -- 'Utilities', 'Maintenance', 'Staff Wages', 'Guest Amenities', 'Food & Kitchen', 'Govt Taxes', 'Miscellaneous'
+  amount NUMERIC NOT NULL DEFAULT 0,
+  payment_method TEXT DEFAULT 'UPI', -- 'Cash', 'UPI', 'Bank Transfer', 'Card'
+  description TEXT NOT NULL,
+  receipt_url TEXT,
+  reimbursement_status TEXT NOT NULL DEFAULT 'Settled', -- 'Settled' | 'Pending Reimbursement'
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS for Expenses
+ALTER TABLE public.expense_payers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon read write expense_payers" ON public.expense_payers FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow anon read write expenses" ON public.expenses FOR ALL USING (true) WITH CHECK (true);
+
+-- 9. Setup Storage Bucket for Guest ID Documents
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('guest-documents', 'guest-documents', true)
 ON CONFLICT (id) DO NOTHING;
@@ -138,3 +170,24 @@ INSERT INTO public.staff_list (id, full_name, role, title, email, phone, status)
 ('stf-001', 'Somajam Management Team', 'admin', 'Property Manager', 'somajamholidays@gmail.com', '+91 92499 59035', 'Active'),
 ('stf-002', 'Front Desk Staff', 'staff', 'Guest Associate', 'help@somajamholidays.com', '+91 92499 59035', 'Active')
 ON CONFLICT (id) DO NOTHING;
+
+-- Seed Expense Payers (5 Directors, 1 Caretaker, 1 Common Bucket)
+INSERT INTO public.expense_payers (id, name, group_tag, phone, upi_id) VALUES
+('pyr-common', 'Common Homestay Account', 'Common Pool', '+91 92499 59035', 'somajam@upi'),
+('pyr-dir1', 'Director 1 (Ramesh)', 'Director', '+91 98470 11111', 'ramesh@upi'),
+('pyr-dir2', 'Director 2 (Sarah)', 'Director', '+91 98470 22222', 'sarah@upi'),
+('pyr-dir3', 'Director 3 (George)', 'Director', '+91 98470 33333', 'george@upi'),
+('pyr-dir4', 'Director 4 (Anish)', 'Director', '+91 98470 44444', 'anish@upi'),
+('pyr-dir5', 'Director 5 (Deepa)', 'Director', '+91 98470 55555', 'deepa@upi'),
+('pyr-caretaker', 'Caretaker (Joy)', 'Caretaker', '+91 92499 59000', 'joycaretaker@upi')
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed Sample Expenses
+INSERT INTO public.expenses (id, expense_date, payer_id, payer_name, category, amount, payment_method, description, reimbursement_status) VALUES
+('exp-001', '2026-08-10', 'pyr-common', 'Common Homestay Account', 'Utilities', 4850, 'Bank Transfer', 'KSEB Monthly Electricity Bill for 5 Cottages', 'Settled'),
+('exp-002', '2026-08-12', 'pyr-caretaker', 'Caretaker (Joy)', 'Maintenance', 1200, 'Cash', 'Emergency plumbing washer and pipe joint replacement', 'Pending Reimbursement'),
+('exp-003', '2026-08-14', 'pyr-dir1', 'Director 1 (Ramesh)', 'Guest Amenities', 3500, 'UPI', 'Bulk campfire wood supply (2 loads)', 'Pending Reimbursement'),
+('exp-004', '2026-08-15', 'pyr-dir3', 'Director 3 (George)', 'Food & Kitchen', 2200, 'UPI', 'Guest welcome tea & coffee kit refresh', 'Settled'),
+('exp-005', '2026-08-16', 'pyr-common', 'Common Homestay Account', 'Utilities', 1499, 'UPI', 'BSNL High-speed Fiber Wi-Fi monthly subscription', 'Settled')
+ON CONFLICT (id) DO NOTHING;
+

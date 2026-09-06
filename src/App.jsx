@@ -10,6 +10,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Guests } from './pages/Guests';
 import { Bookings } from './pages/Bookings';
 import { Rooms } from './pages/Rooms';
+import { Expenses } from './pages/Expenses';
 import { ReportsSettings } from './pages/ReportsSettings';
 
 class ErrorBoundary extends Component {
@@ -41,8 +42,13 @@ class ErrorBoundary extends Component {
             </div>
             <h2 className="text-xl font-bold text-slate-100">Session Error Occurred</h2>
             <p className="text-xs text-slate-400">
-              An unexpected error occurred while loading your session. Click below to clear stored cache and sign in fresh.
+              An unexpected error occurred while loading your session:
             </p>
+            {this.state.error && (
+              <div className="p-3 rounded-xl bg-slate-950 border border-rose-500/30 font-mono text-[11px] text-rose-300 text-left overflow-x-auto">
+                {String(this.state.error.message || this.state.error)}
+              </div>
+            )}
             <button
               onClick={this.handleReset}
               className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white text-xs font-bold shadow-lg"
@@ -90,6 +96,7 @@ function AppLayout() {
             <Route path="/guests" element={<Guests />} />
             <Route path="/bookings" element={<Bookings />} />
             <Route path="/rooms" element={<Rooms />} />
+            <Route path="/expenses" element={<Expenses />} />
             <Route path="/reports-settings" element={<ReportsSettings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

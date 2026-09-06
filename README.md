@@ -78,7 +78,7 @@ The application supports **2 User Roles** (strictly internal staff-only access):
 
 ---
 
-## 5. Screen List (5 Responsive Screens)
+## 5. Screen List (6 Responsive Screens)
 
 ### Screen 1: Operations Dashboard (`/`)
 * **Purpose:** Real-time front desk command center for Somajam Holidays.
@@ -110,7 +110,17 @@ The application supports **2 User Roles** (strictly internal staff-only access):
   * **Cottage Cards Grid:** Cards displaying Room `No. 1` to `No. 5`, category (`1BHK Cottage`), capacity, price (`₹3,500/night`), facilities tags (Swimming Pool, Wi-Fi, EV Charging, etc.), and occupant card if occupied.
   * **Status Action Controls:** 1-click `Mark Maintenance` / `Set Available` status toggles.
 
-### Screen 5: Reports & Staff Settings (`/reports-settings`)
+### Screen 5: Expense Tracker & Settlement Ledger (`/expenses`)
+* **Purpose:** Comprehensive financial tracking across 5 Directors, Caretaker, and Common Homestay accounts.
+* **UI Elements:**
+  * **Active Operating User Selector:** Top-bar identity dropdown (`Active User: Director 1 ▾`) to verify transaction deletion authorization.
+  * **Summary Metric Cards:** Total Outlay Logged, Common Pool Outlay, Directors Out-of-Pocket Outlay, and Pending Reimbursements.
+  * **Reimbursement Settlement Summary Alert:** Live balance calculation showing exact out-of-pocket amounts owed back to Directors / Caretaker by the homestay account.
+  * **Dynamic Payer Account Tabs:** Filter ledger by `All Accounts`, `Common Pool`, `Director 1..5`, `Caretaker`, or custom accounts.
+  * **Log Expense Modal & Receipt Attachment:** Form to log purchases with Category, Amount, Payment Method, Description, and file attachment drop zone for receipt/bill scans.
+  * **Manage Accounts Modal:** Add or delete custom expense accounts/users dynamically.
+
+### Screen 6: Reports & Staff Settings (`/reports-settings`)
 * **Purpose:** Occupancy analytics, CSV data export, and staff user administration.
 * **UI Elements:**
   * **Active Role Switcher:** Toggle button between Admin and Staff mode.
@@ -120,7 +130,7 @@ The application supports **2 User Roles** (strictly internal staff-only access):
 
 ---
 
-## 6. Business Rules
+## 6. Business Rules & Logic Constraints
 
 1. **Unified Guest + Booking Creation:**
    * Staff can add a guest and assign a room (`No. 1` to `No. 5`), check-in date, check-out date, and guest count in a single modal form submission.
@@ -131,6 +141,12 @@ The application supports **2 User Roles** (strictly internal staff-only access):
    * Checking out a guest automatically sets the assigned room status to `Available`.
 4. **Document Audit Warning:**
    * Checking in a guest without an attached ID document triggers a compliance warning toast.
+5. **Account Deletion Safety Rule (Expense Tracker):**
+   * Block deleting any Expense User / Account if active transactions exist for that account (`expenses.some(e => e.payer_id === id)`). Users must first delete or reassign linked transactions before removing an account.
+6. **Transaction Deletion Authorization Rule:**
+   * Any user can log an expense on behalf of any other user's name. However, **only the user recorded on that transaction** (matching the `Active User` identity selector) is authorized to delete it. Attempting to delete another user's transaction triggers a `Permission Blocked` alert.
+7. **Persistent Storage Sync:**
+   * All expense payers, transaction entries, and reimbursement statuses automatically synchronize to `localStorage` (`somajam_expense_payers` & `somajam_expenses`) and Supabase DB, ensuring changes reflect permanently across re-renders and session reloads.
 
 ---
 
@@ -139,8 +155,11 @@ The application supports **2 User Roles** (strictly internal staff-only access):
 * **Frontend Framework:** React 19 + React Router v7
 * **Build Tool:** Vite 8
 * **Styling:** Tailwind CSS v4 + Lucide React Icons
+* **Database & Storage:** Supabase PostgreSQL (`rooms`, `guests`, `bookings`, `documents`, `staff_list`, `expense_payers`, `expenses`) + Supabase Storage Bucket (`guest-documents`)
 * **Running Locally:**
   ```bash
   cmd /c npm run dev
   ```
   App URL: `http://localhost:5173/`
+  Expense Tracker URL: `http://localhost:5173/expenses`
+
