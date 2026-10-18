@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 
 export const GuestModal = ({ isOpen, onClose, guestToEdit = null }) => {
-  const { rooms, documents, addGuest, updateGuest, addDocument, deleteDocument, showToast } = useApp();
+  const { rooms, documents, addGuest, updateGuest, addBooking, addDocument, deleteDocument, showToast } = useApp();
 
   const todayStr = new Date().toISOString().split('T')[0];
   const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
@@ -122,18 +122,32 @@ export const GuestModal = ({ isOpen, onClose, guestToEdit = null }) => {
     showToast('Attached file removed', 'info');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     let guestObj = guestToEdit;
 
     if (guestToEdit) {
-      updateGuest(guestToEdit.id, formData);
+      await updateGuest(guestToEdit.id, formData);
     } else {
-      guestObj = addGuest(formData);
+      guestObj = await addGuest(formData);
     }
 
     const targetGuestId = guestObj ? guestObj.id : guestToEdit?.id;
     const targetGuestName = formData.full_name || 'Guest';
+
+    // If a room is selected in 1-Step Booking, create the reservation!
+    if (!guestToEdit && formData.room_id && targetGuestId) {
+      await addBooking({
+        guest_id: targetGuestId,
+        guest_name: targetGuestName,
+        room_id: formData.room_id,
+        check_in_date: formData.check_in_date,
+        check_out_date: formData.check_out_date,
+        num_guests: parseInt(formData.num_guests, 10) || 2,
+        booking_status: formData.booking_status || 'Confirmed',
+        notes: formData.notes || '',
+      });
+    }
 
     // Save all staged files to documents archive
     if (targetGuestId && stagedFiles.length > 0) {

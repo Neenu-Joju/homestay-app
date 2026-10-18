@@ -106,11 +106,12 @@ export const BookingModal = ({ isOpen, onClose }) => {
     return map;
   }, [rooms, bookings, checkInDate, checkOutDate]);
 
-  // Check if quickName or quickPhone matches an existing guest in database
+  // Check if phone or name matches an existing guest in database (in Quick or Detailed mode)
   const matchingExistingGuest = useMemo(() => {
-    if (bookingTab !== 'quick') return null;
-    const cleanP = quickPhone.replace(/\D/g, '');
-    const cleanN = quickName.trim().toLowerCase();
+    const targetPhone = bookingTab === 'quick' ? quickPhone : (guestSource === 'new' ? detailedGuest.phone : '');
+    const targetName = bookingTab === 'quick' ? quickName : (guestSource === 'new' ? detailedGuest.full_name : '');
+    const cleanP = (targetPhone || '').replace(/\D/g, '');
+    const cleanN = (targetName || '').trim().toLowerCase();
     if (cleanP.length >= 7) {
       return guests.find((g) => g.phone && g.phone.replace(/\D/g, '').includes(cleanP));
     }
@@ -118,7 +119,20 @@ export const BookingModal = ({ isOpen, onClose }) => {
       return guests.find((g) => g.full_name && g.full_name.trim().toLowerCase() === cleanN);
     }
     return null;
-  }, [bookingTab, quickPhone, quickName, guests]);
+  }, [bookingTab, guestSource, quickPhone, quickName, detailedGuest.phone, detailedGuest.full_name, guests]);
+
+  // Number of existing bookings for the matched repeat guest
+  const existingBookingsCount = useMemo(() => {
+    if (!matchingExistingGuest) return 0;
+    return bookings.filter((b) => b && b.guest_id === matchingExistingGuest.id).length;
+  }, [matchingExistingGuest, bookings]);
+
+  // Auto-populate guest name if empty when phone matches an existing guest
+  useEffect(() => {
+    if (matchingExistingGuest && !quickName && matchingExistingGuest.full_name) {
+      setQuickName(matchingExistingGuest.full_name);
+    }
+  }, [matchingExistingGuest, quickName]);
 
   // Toggle room selection for multi-room booking
   const toggleRoomSelection = (roomId) => {
@@ -388,13 +402,15 @@ export const BookingModal = ({ isOpen, onClose }) => {
 
               {/* Match Indicator if same guest exists */}
               {matchingExistingGuest && (
-                <div className="p-2.5 rounded-xl bg-teal-950/40 border border-teal-500/30 flex items-center justify-between text-xs text-teal-300 animate-in fade-in">
+                <div className="p-3 rounded-xl bg-teal-950/40 border border-teal-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-teal-300 animate-in fade-in">
                   <span className="flex items-center gap-1.5 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-teal-400" />
-                    Existing guest profile found: <strong>{matchingExistingGuest.full_name}</strong>
+                    <CheckCircle2 className="w-4 h-4 text-teal-400 shrink-0" />
+                    <span>
+                      Repeat Guest: <strong>{matchingExistingGuest.full_name}</strong> ({existingBookingsCount} existing booking{existingBookingsCount !== 1 ? 's' : ''})
+                    </span>
                   </span>
-                  <span className="text-[11px] text-teal-400 font-mono bg-teal-500/10 px-2 py-0.5 rounded">
-                    Auto-linking to profile
+                  <span className="text-[11px] text-emerald-400 font-mono bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 whitespace-nowrap">
+                    Adding new booking to profile ✓
                   </span>
                 </div>
               )}
@@ -461,6 +477,18 @@ export const BookingModal = ({ isOpen, onClose }) => {
                         />
                       </div>
                     </div>
+
+                    {matchingExistingGuest && (
+                      <div className="p-2.5 rounded-xl bg-teal-950/40 border border-teal-500/30 flex items-center justify-between text-xs text-teal-300">
+                        <span className="flex items-center gap-1.5 font-medium">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                          <span>Repeat Guest: <strong>{matchingExistingGuest.full_name}</strong> ({existingBookingsCount} existing booking{existingBookingsCount !== 1 ? 's' : ''})</span>
+                        </span>
+                        <span className="text-[11px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                          Auto-linking ✓
+                        </span>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
