@@ -91,11 +91,51 @@ export const AppProvider = ({ children }) => {
     showToast('Logged out successfully', 'info');
   };
 
-  // Master States
-  const [rooms, setRooms] = useState(initialRooms);
-  const [guests, setGuests] = useState(initialGuests);
-  const [bookings, setBookings] = useState(initialBookings);
-  const [documents, setDocuments] = useState(initialDocuments);
+  // Master States with LocalStorage Cache
+  const [rooms, setRooms] = useState(() => {
+    try {
+      const saved = localStorage.getItem('somajam_rooms');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return initialRooms;
+  });
+
+  const [guests, setGuests] = useState(() => {
+    try {
+      const saved = localStorage.getItem('somajam_guests');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return initialGuests;
+  });
+
+  const [bookings, setBookings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('somajam_bookings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return initialBookings;
+  });
+
+  const [documents, setDocuments] = useState(() => {
+    try {
+      const saved = localStorage.getItem('somajam_documents');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return initialDocuments;
+  });
+
   const [staffList, setStaffList] = useState(initialStaff);
 
   // Expense Payers & Expenses Persistent State
@@ -238,6 +278,7 @@ export const AppProvider = ({ children }) => {
   const addGuest = async (guestData) => {
     const {
       room_id,
+      room_ids,
       check_in_date,
       check_out_date,
       num_guests,
@@ -245,66 +286,76 @@ export const AppProvider = ({ children }) => {
       ...coreGuestData
     } = guestData;
 
+    // Check if guest with matching phone already exists (phone is the unique identifier)
+    const cleanPhone = coreGuestData.phone ? coreGuestData.phone.replace(/\D/g, '') : '';
+    const cleanName = coreGuestData.full_name ? coreGuestData.full_name.trim().toLowerCase() : '';
+
+    const existing = guests.find((g) => {
+      const gPhone = g.phone ? g.phone.replace(/\D/g, '') : '';
+      const gName = g.full_name ? g.full_name.trim().toLowerCase() : '';
+
+      // If both records provide valid phone numbers, phone is the definitive unique identifier
+      if (cleanPhone && gPhone && cleanPhone.length >= 7 && gPhone.length >= 7) {
+        return cleanPhone === gPhone;
+      }
+
+      // If phone is missing on either record, fall back to matching by exact full name
+      if ((!cleanPhone || cleanPhone.length < 7) || (!gPhone || gPhone.length < 7)) {
+        return Boolean(cleanName && gName && cleanName === gName);
+      }
+
+      return false;
+    });
+
+    if (existing) {
+      // Merge any newly provided info with existing record
+      const mergedGuest = {
+        ...existing,
+        ...Object.fromEntries(
+          Object.entries(coreGuestData).filter(
+            ([_, v]) => v !== undefined && v !== '' && v !== 'Pending' && v !== 'Pending Check-In'
+          )
+        ),
+      };
+
+      setGuests((prev) => {
+        const updated = prev.map((g) => (g.id === existing.id ? mergedGuest : g));
+        try { localStorage.setItem('somajam_guests', JSON.stringify(updated)); } catch(e){}
+        return updated;
+      });
+
+      // Background Supabase sync
+      supabase.from('guests').update(mergedGuest).eq('id', existing.id).then().catch(() => {});
+
+      return mergedGuest;
+    }
+
     const newGuest = {
       id: `gst-${Date.now()}`,
       created_at: new Date().toISOString(),
       ...coreGuestData,
     };
 
-    setGuests((prev) => [newGuest, ...prev]);
+    setGuests((prev) => {
+      const updated = [newGuest, ...prev];
+      try { localStorage.setItem('somajam_guests', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
 
-    // Persist Guest to Supabase
-    try {
-      await supabase.from('guests').insert([newGuest]);
-    } catch (e) {
-      console.error('Supabase guest insert error:', e);
-    }
-
-    // If stay details provided, auto-assign room and create booking
-    if (room_id && check_in_date && check_out_date) {
-      const room = rooms.find((r) => r.id === room_id);
-      const refNum = `SJM-2026-${String(bookings.length + 1).padStart(3, '0')}`;
-      const newBooking = {
-        id: `bkg-${Date.now()}`,
-        booking_ref: refNum,
-        guest_id: newGuest.id,
-        guest_name: newGuest.full_name,
-        room_id: room_id,
-        room_number: room ? room.room_number : 'Room',
-        check_in_date: check_in_date,
-        check_out_date: check_out_date,
-        num_guests: Number(num_guests) || 1,
-        status: booking_status || 'Confirmed',
-        created_at: new Date().toISOString(),
-      };
-
-      setBookings((prev) => [newBooking, ...prev]);
-      supabase.from('bookings').insert([newBooking]).then();
-
-      // Update room status if checking in
-      if (booking_status === 'Checked In') {
-        setRooms((prev) =>
-          prev.map((r) => (r.id === room_id ? { ...r, status: 'Occupied' } : r))
-        );
-        supabase.from('rooms').update({ status: 'Occupied' }).eq('id', room_id).then();
-      }
-
-      showToast(
-        `Guest ${newGuest.full_name} registered & assigned Room ${
-          room ? room.room_number : ''
-        }!`
-      );
-    } else {
-      showToast(`Guest ${newGuest.full_name} added to records`);
-    }
+    // Background Supabase sync
+    supabase.from('guests').insert([newGuest]).then().catch((e) => {
+      console.warn('Supabase guest insert notice:', e);
+    });
 
     return newGuest;
   };
 
   const updateGuest = async (guestId, updatedData) => {
-    setGuests((prev) =>
-      prev.map((g) => (g.id === guestId ? { ...g, ...updatedData } : g))
-    );
+    setGuests((prev) => {
+      const updated = prev.map((g) => (g.id === guestId ? { ...g, ...updatedData } : g));
+      try { localStorage.setItem('somajam_guests', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
 
     try {
       await supabase.from('guests').update(updatedData).eq('id', guestId);
@@ -319,8 +370,16 @@ export const AppProvider = ({ children }) => {
       showToast('Permission Denied: Only Admin can delete guest records', 'error');
       return;
     }
-    setGuests((prev) => prev.filter((g) => g.id !== guestId));
-    setBookings((prev) => prev.filter((b) => b.guest_id !== guestId));
+    setGuests((prev) => {
+      const updated = prev.filter((g) => g.id !== guestId);
+      try { localStorage.setItem('somajam_guests', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
+    setBookings((prev) => {
+      const updated = prev.filter((b) => b.guest_id !== guestId);
+      try { localStorage.setItem('somajam_bookings', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
 
     try {
       await supabase.from('guests').delete().eq('id', guestId);
@@ -330,73 +389,126 @@ export const AppProvider = ({ children }) => {
     showToast('Guest record removed from database', 'info');
   };
 
-  // --- BOOKING HANDLERS & CHECK-IN / CHECK-OUT ---
+  // --- BOOKING HANDLERS & CHECK-IN / CHECK-OUT (SUPPORTS MULTI-ROOM & SAME-NAME BOOKINGS) ---
   const addBooking = async (bookingData) => {
-    const { room_id, check_in_date, check_out_date, guest_id, guest_name, booking_status } = bookingData;
-    const isOverlapping = bookings.some((b) => {
-      if (b.room_id !== room_id || b.status === 'Cancelled' || b.status === 'Checked Out') {
-        return false;
-      }
-      return (
-        new Date(check_in_date) < new Date(b.check_out_date) &&
-        new Date(check_out_date) > new Date(b.check_in_date)
-      );
-    });
+    // Supports single room (room_id) or multiple rooms (room_ids)
+    const roomIds = Array.isArray(bookingData.room_ids) && bookingData.room_ids.length > 0
+      ? bookingData.room_ids
+      : bookingData.room_id
+      ? [bookingData.room_id]
+      : [];
 
-    if (isOverlapping) {
+    if (roomIds.length === 0) {
+      showToast('Please select at least one cottage room!', 'warning');
+      return false;
+    }
+
+    const { check_in_date, check_out_date, guest_id, guest_name, booking_status } = bookingData;
+
+    // Validate dates
+    if (new Date(check_out_date) <= new Date(check_in_date)) {
+      showToast('Check-out date must be strictly after Check-in date!', 'error');
+      return false;
+    }
+
+    // Check overlaps for each requested room
+    const conflictingRooms = [];
+    for (const rId of roomIds) {
+      const room = rooms.find((r) => r.id === rId);
+      const roomLabel = room ? `Room ${room.room_number}` : 'Selected Cottage';
+      const isOverlapping = bookings.some((b) => {
+        if (b.room_id !== rId || b.status === 'Cancelled' || b.status === 'Checked Out') {
+          return false;
+        }
+        return (
+          new Date(check_in_date) < new Date(b.check_out_date) &&
+          new Date(check_out_date) > new Date(b.check_in_date)
+        );
+      });
+      if (isOverlapping) {
+        conflictingRooms.push(roomLabel);
+      }
+    }
+
+    if (conflictingRooms.length > 0) {
       showToast(
-        'Double Booking Blocked: Room is already reserved for selected dates!',
+        `Double Booking Blocked: ${conflictingRooms.join(', ')} already reserved for selected dates!`,
         'error'
       );
       return false;
     }
 
-    const room = rooms.find((r) => r.id === room_id);
     const guest = guests.find((g) => g.id === guest_id);
     const resolvedGuestName = guest_name || (guest ? guest.full_name : 'Guest');
     const finalStatus = booking_status || 'Confirmed';
 
-    const refNum = `SJM-2026-${String(bookings.length + 1).padStart(3, '0')}`;
-    const newBooking = {
-      id: `bkg-${Date.now()}`,
-      booking_ref: refNum,
-      guest_id: guest_id,
-      guest_name: resolvedGuestName,
-      room_id: room_id,
-      room_number: room ? room.room_number : 'Room',
-      check_in_date: check_in_date,
-      check_out_date: check_out_date,
-      num_guests: Number(bookingData.num_guests) || 1,
-      status: finalStatus,
-      notes: bookingData.notes || '',
-      created_at: new Date().toISOString(),
-    };
+    const createdBookings = [];
+    const updatedRooms = [...rooms];
 
-    setBookings((prev) => [newBooking, ...prev]);
+    roomIds.forEach((rId, idx) => {
+      const room = rooms.find((r) => r.id === rId);
+      const suffix = roomIds.length > 1 ? `-${String.fromCharCode(65 + idx)}` : '';
+      const refNum = `SJM-2026-${String(bookings.length + 1 + idx).padStart(3, '0')}${suffix}`;
 
-    // If Instant Check-In, set Room status to Occupied
-    if (finalStatus === 'Checked In') {
-      setRooms((prev) =>
-        prev.map((r) => (r.id === room_id ? { ...r, status: 'Occupied' } : r))
-      );
-      try {
-        await supabase.from('rooms').update({ status: 'Occupied' }).eq('id', room_id);
-      } catch (e) {
-        console.error('Supabase room status update error:', e);
+      const newBooking = {
+        id: `bkg-${Date.now()}-${idx}`,
+        booking_ref: refNum,
+        guest_id: guest_id,
+        guest_name: resolvedGuestName,
+        room_id: rId,
+        room_number: room ? room.room_number : 'Room',
+        check_in_date: check_in_date,
+        check_out_date: check_out_date,
+        num_guests: Number(bookingData.num_guests) || (room ? room.capacity : 2),
+        status: finalStatus,
+        notes: bookingData.notes || '',
+        created_at: new Date().toISOString(),
+      };
+
+      createdBookings.push(newBooking);
+
+      if (finalStatus === 'Checked In') {
+        const roomIdx = updatedRooms.findIndex((r) => r.id === rId);
+        if (roomIdx !== -1) {
+          updatedRooms[roomIdx] = { ...updatedRooms[roomIdx], status: 'Occupied' };
+        }
       }
-    }
+    });
 
-    try {
-      await supabase.from('bookings').insert([newBooking]);
-    } catch (e) {
-      console.error('Supabase booking insert error:', e);
-    }
+    // Update state immediately
+    setBookings((prev) => {
+      const updated = [...createdBookings, ...prev];
+      try { localStorage.setItem('somajam_bookings', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
 
     if (finalStatus === 'Checked In') {
-      showToast(`Guest ${resolvedGuestName} Checked In! Cottage ${room ? room.room_number : ''} marked OCCUPIED.`);
-    } else {
-      showToast(`Booking ${refNum} created successfully for ${resolvedGuestName}!`);
+      setRooms(updatedRooms);
+      try { localStorage.setItem('somajam_rooms', JSON.stringify(updatedRooms)); } catch(e){}
     }
+
+    // Background sync with Supabase
+    createdBookings.forEach((bkg) => {
+      supabase.from('bookings').insert([bkg]).then().catch((err) => {
+        console.warn('Background Supabase booking sync failed (using local store):', err);
+      });
+    });
+
+    if (finalStatus === 'Checked In') {
+      roomIds.forEach((rId) => {
+        supabase.from('rooms').update({ status: 'Occupied' }).eq('id', rId).then().catch(() => {});
+      });
+      showToast(
+        `Checked in ${resolvedGuestName}! ${roomIds.length > 1 ? `${roomIds.length} Cottages` : 'Cottage'} marked OCCUPIED.`,
+        'success'
+      );
+    } else {
+      showToast(
+        `Booking confirmed for ${resolvedGuestName} (${roomIds.length > 1 ? `${roomIds.length} Cottages` : '1 Cottage'})!`,
+        'success'
+      );
+    }
+
     return true;
   };
 
@@ -416,23 +528,25 @@ export const AppProvider = ({ children }) => {
       ? `${booking.notes || ''} | Check-in Notes: ${staffNotes}`
       : booking.notes;
 
-    setBookings((prev) =>
-      prev.map((b) =>
-        b.id === bookingId
-          ? { ...b, status: 'Checked In', notes: updatedNotes }
-          : b
-      )
-    );
+    setBookings((prev) => {
+      const updated = prev.map((b) =>
+        b.id === bookingId ? { ...b, status: 'Checked In', notes: updatedNotes } : b
+      );
+      try { localStorage.setItem('somajam_bookings', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
 
-    setRooms((prev) =>
-      prev.map((r) =>
+    setRooms((prev) => {
+      const updated = prev.map((r) =>
         r.id === booking.room_id ? { ...r, status: 'Occupied' } : r
-      )
-    );
+      );
+      try { localStorage.setItem('somajam_rooms', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
 
     try {
-      await supabase.from('bookings').update({ status: 'Checked In', notes: updatedNotes }).eq('id', bookingId);
-      await supabase.from('rooms').update({ status: 'Occupied' }).eq('id', booking.room_id);
+      supabase.from('bookings').update({ status: 'Checked In', notes: updatedNotes }).eq('id', bookingId).then();
+      supabase.from('rooms').update({ status: 'Occupied' }).eq('id', booking.room_id).then();
     } catch (e) {
       console.error(e);
     }
@@ -448,23 +562,25 @@ export const AppProvider = ({ children }) => {
       ? `${booking.notes || ''} | Check-out Notes: ${staffNotes}`
       : booking.notes;
 
-    setBookings((prev) =>
-      prev.map((b) =>
-        b.id === bookingId
-          ? { ...b, status: 'Checked Out', notes: updatedNotes }
-          : b
-      )
-    );
+    setBookings((prev) => {
+      const updated = prev.map((b) =>
+        b.id === bookingId ? { ...b, status: 'Checked Out', notes: updatedNotes } : b
+      );
+      try { localStorage.setItem('somajam_bookings', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
 
-    setRooms((prev) =>
-      prev.map((r) =>
+    setRooms((prev) => {
+      const updated = prev.map((r) =>
         r.id === booking.room_id ? { ...r, status: 'Available' } : r
-      )
-    );
+      );
+      try { localStorage.setItem('somajam_rooms', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
 
     try {
-      await supabase.from('bookings').update({ status: 'Checked Out', notes: updatedNotes }).eq('id', bookingId);
-      await supabase.from('rooms').update({ status: 'Available' }).eq('id', booking.room_id);
+      supabase.from('bookings').update({ status: 'Checked Out', notes: updatedNotes }).eq('id', bookingId).then();
+      supabase.from('rooms').update({ status: 'Available' }).eq('id', booking.room_id).then();
     } catch (e) {
       console.error(e);
     }
@@ -473,11 +589,24 @@ export const AppProvider = ({ children }) => {
   };
 
   const cancelBooking = async (bookingId) => {
-    setBookings((prev) =>
-      prev.map((b) => (b.id === bookingId ? { ...b, status: 'Cancelled' } : b))
-    );
+    const target = bookings.find((b) => b.id === bookingId);
+    setBookings((prev) => {
+      const updated = prev.map((b) => (b.id === bookingId ? { ...b, status: 'Cancelled' } : b));
+      try { localStorage.setItem('somajam_bookings', JSON.stringify(updated)); } catch(e){}
+      return updated;
+    });
+
+    if (target && target.status === 'Checked In') {
+      setRooms((prev) => {
+        const updated = prev.map((r) => (r.id === target.room_id ? { ...r, status: 'Available' } : r));
+        try { localStorage.setItem('somajam_rooms', JSON.stringify(updated)); } catch(e){}
+        return updated;
+      });
+      supabase.from('rooms').update({ status: 'Available' }).eq('id', target.room_id).then().catch(() => {});
+    }
+
     try {
-      await supabase.from('bookings').update({ status: 'Cancelled' }).eq('id', bookingId);
+      supabase.from('bookings').update({ status: 'Cancelled' }).eq('id', bookingId).then();
     } catch (e) {
       console.error(e);
     }

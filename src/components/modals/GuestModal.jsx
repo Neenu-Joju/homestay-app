@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { useApp } from '../../context/AppContext';
 import { DocumentViewerModal } from './DocumentViewerModal';
-import { AadhaarScannerModal } from './AadhaarScannerModal';
 import {
   User,
   Phone,
@@ -24,9 +23,11 @@ import {
   Zap,
 } from 'lucide-react';
 
-export const GuestModal = ({ isOpen, onClose, guestToEdit = null, prefillData = null }) => {
+export const GuestModal = ({ isOpen, onClose, guestToEdit = null }) => {
   const { rooms, documents, addGuest, updateGuest, addDocument, deleteDocument, showToast } = useApp();
-  const [showAadhaarScanner, setShowAadhaarScanner] = useState(false);
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
   const [formData, setFormData] = useState({
     full_name: '',
@@ -39,8 +40,8 @@ export const GuestModal = ({ isOpen, onClose, guestToEdit = null, prefillData = 
     notes: '',
     // Unified Stay Details
     room_id: '',
-    check_in_date: '2026-08-17',
-    check_out_date: '2026-08-19',
+    check_in_date: todayStr,
+    check_out_date: tomorrowStr,
     num_guests: '2',
     booking_status: 'Confirmed',
   });
@@ -62,30 +63,12 @@ export const GuestModal = ({ isOpen, onClose, guestToEdit = null, prefillData = 
         id_document_number: guestToEdit.id_document_number || '',
         notes: guestToEdit.notes || '',
         room_id: '',
-        check_in_date: '2026-08-17',
-        check_out_date: '2026-08-19',
-        num_guests: '2',
-        booking_status: 'Confirmed',
-      });
-    } else if (prefillData) {
-      const available = rooms.find((r) => r.status === 'Available');
-      setFormData({
-        full_name: prefillData.full_name || '',
-        phone: prefillData.phone || '',
-        email: prefillData.email || '',
-        address: prefillData.address || '',
-        nationality: prefillData.nationality || 'Indian',
-        id_document_type: prefillData.id_document_type || 'Aadhaar',
-        id_document_number: prefillData.id_document_number || '',
-        notes: prefillData.notes || '',
-        room_id: available ? available.id : (rooms[0] ? rooms[0].id : ''),
-        check_in_date: '2026-08-17',
-        check_out_date: '2026-08-19',
+        check_in_date: todayStr,
+        check_out_date: tomorrowStr,
         num_guests: '2',
         booking_status: 'Confirmed',
       });
     } else {
-      const available = rooms.find((r) => r.status === 'Available');
       setFormData({
         full_name: '',
         phone: '',
@@ -95,14 +78,14 @@ export const GuestModal = ({ isOpen, onClose, guestToEdit = null, prefillData = 
         id_document_type: 'Aadhaar',
         id_document_number: '',
         notes: '',
-        room_id: available ? available.id : (rooms[0] ? rooms[0].id : ''),
-        check_in_date: '2026-08-17',
-        check_out_date: '2026-08-19',
+        room_id: '',
+        check_in_date: todayStr,
+        check_out_date: tomorrowStr,
         num_guests: '2',
         booking_status: 'Confirmed',
       });
     }
-  }, [guestToEdit, prefillData, isOpen, rooms]);
+  }, [guestToEdit, isOpen]);
 
   // Existing documents if editing an existing guest
   const existingDocs = guestToEdit ? documents.filter((d) => d.guest_id === guestToEdit.id) : [];
@@ -171,21 +154,6 @@ export const GuestModal = ({ isOpen, onClose, guestToEdit = null, prefillData = 
     onClose();
   };
 
-  const handleAadhaarAutoFill = (decoded) => {
-    setFormData((prev) => ({
-      ...prev,
-      full_name: decoded.fullName || prev.full_name,
-      address: decoded.address || prev.address,
-      nationality: 'Indian',
-      id_document_type: 'Aadhaar',
-      id_document_number: decoded.maskedId || prev.id_document_number,
-      notes: prev.notes
-        ? `${prev.notes} | UIDAI Verified (${decoded.referenceId})`
-        : `UIDAI Cryptographically Verified via Secure QR (${decoded.referenceId})`,
-    }));
-    showToast(`Aadhaar verified for ${decoded.fullName}! Form auto-filled.`, 'success');
-  };
-
   return (
     <>
       <Modal
@@ -194,35 +162,6 @@ export const GuestModal = ({ isOpen, onClose, guestToEdit = null, prefillData = 
         title={guestToEdit ? 'Edit Guest Profile' : 'Add New Guest & Assign Room'}
       >
         <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-          {/* Quick Aadhaar Auto-Fill Banner */}
-          {!guestToEdit && (
-            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-slate-900 to-teal-950/40 border border-emerald-500/30 flex items-center justify-between gap-3 shadow-md">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                  <ShieldCheck className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
-                    Scan Aadhaar QR
-                    <span className="text-[10px] font-normal text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                      Instant Auto-Fill
-                    </span>
-                  </p>
-                  <p className="text-[10px] text-slate-400">
-                    Auto-fills Name, Address & Masked Aadhaar number in 2 seconds
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAadhaarScanner(true)}
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold shadow-md shadow-emerald-900/30 transition-all flex items-center gap-1.5 shrink-0"
-              >
-                <Camera className="w-3.5 h-3.5" />
-                <span>Scan QR</span>
-              </button>
-            </div>
-          )}
 
           {/* Full Name & Phone */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -597,13 +536,6 @@ export const GuestModal = ({ isOpen, onClose, guestToEdit = null, prefillData = 
         isOpen={!!previewDoc}
         onClose={() => setPreviewDoc(null)}
         doc={previewDoc}
-      />
-
-      {/* Aadhaar Scanner Modal */}
-      <AadhaarScannerModal
-        isOpen={showAadhaarScanner}
-        onClose={() => setShowAadhaarScanner(false)}
-        onAutoFill={handleAadhaarAutoFill}
       />
     </>
   );

@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../common/Modal';
 import { useApp } from '../../context/AppContext';
 import { DocumentViewerModal } from './DocumentViewerModal';
-import { AadhaarScannerModal } from './AadhaarScannerModal';
 import {
   Calendar,
   User,
@@ -21,13 +20,13 @@ import {
   Mail,
   CheckCircle2,
   LogIn,
-  ShieldCheck,
-  Camera,
+  AlertCircle,
+  Users,
+  Check,
 } from 'lucide-react';
 
 export const BookingModal = ({ isOpen, onClose }) => {
-  const { guests, rooms, documents, addGuest, addBooking, addDocument, deleteDocument, showToast } = useApp();
-  const [showAadhaarScanner, setShowAadhaarScanner] = useState(false);
+  const { guests, rooms, bookings, documents, addGuest, addBooking, addDocument, showToast } = useApp();
 
   const todayStr = new Date().toISOString().split('T')[0];
   const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
@@ -56,17 +55,85 @@ export const BookingModal = ({ isOpen, onClose }) => {
   // Existing Guest Selection
   const [selectedGuestId, setSelectedGuestId] = useState(guests[0]?.id || '');
 
-  // Stay & Reservation State
-  const [roomId, setRoomId] = useState(rooms[0]?.id || '');
+  // Dates & Reservation State
   const [checkInDate, setCheckInDate] = useState(todayStr);
   const [checkOutDate, setCheckOutDate] = useState(tomorrowStr);
   const [numGuests, setNumGuests] = useState(2);
   const [initialStatus, setInitialStatus] = useState('Checked In'); // Default to Instant Check-In for Detailed mode
   const [notes, setNotes] = useState('');
 
+  // Multi-room Selection State (array of room IDs)
+  const [selectedRoomIds, setSelectedRoomIds] = useState([]);
+
   // Staged documents attached inside Booking modal
   const [stagedFiles, setStagedFiles] = useState([]);
   const [previewDoc, setPreviewDoc] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Auto-initialize default room when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setErrorMsg('');
+      if (rooms.length > 0 && selectedRoomIds.length === 0) {
+        // Default to first available room if any, otherwise first room
+        const firstAvail = rooms.find((r) => r.status === 'Available') || rooms[0];
+        setSelectedRoomIds([firstAvail.id]);
+      }
+      if (!selectedGuestId && guests.length > 0) {
+        setSelectedGuestId(guests[0].id);
+      }
+    }
+  }, [isOpen, rooms, guests]);
+
+  // Compute room availability for the currently selected dates
+  const roomAvailability = useMemo(() => {
+    const map = {};
+    rooms.forEach((r) => {
+      const conflictingBooking = bookings.find((b) => {
+        if (b.room_id !== r.id || b.status === 'Cancelled' || b.status === 'Checked Out') {
+          return false;
+        }
+        return (
+          new Date(checkInDate) < new Date(b.check_out_date) &&
+          new Date(checkOutDate) > new Date(b.check_in_date)
+        );
+      });
+      map[r.id] = {
+        isAvailable: !conflictingBooking,
+        conflictingBooking: conflictingBooking || null,
+      };
+    });
+    return map;
+  }, [rooms, bookings, checkInDate, checkOutDate]);
+
+  // Check if quickName or quickPhone matches an existing guest in database
+  const matchingExistingGuest = useMemo(() => {
+    if (bookingTab !== 'quick') return null;
+    const cleanP = quickPhone.replace(/\D/g, '');
+    const cleanN = quickName.trim().toLowerCase();
+    if (cleanP.length >= 7) {
+      return guests.find((g) => g.phone && g.phone.replace(/\D/g, '').includes(cleanP));
+    }
+    if (cleanN.length >= 3 && cleanP.length === 0) {
+      return guests.find((g) => g.full_name && g.full_name.trim().toLowerCase() === cleanN);
+    }
+    return null;
+  }, [bookingTab, quickPhone, quickName, guests]);
+
+  // Toggle room selection for multi-room booking
+  const toggleRoomSelection = (roomId) => {
+    setSelectedRoomIds((prev) => {
+      if (prev.includes(roomId)) {
+        if (prev.length === 1) {
+          showToast('At least one room must remain selected', 'warning');
+          return prev;
+        }
+        return prev.filter((id) => id !== roomId);
+      } else {
+        return [...prev, roomId];
+      }
+    });
+  };
 
   // Existing documents for selected guest
   const existingGuestDocs = guestSource === 'existing' ? documents.filter((d) => d.guest_id === selectedGuestId) : [];
@@ -103,38 +170,16 @@ export const BookingModal = ({ isOpen, onClose }) => {
     showToast('Attached file removed', 'info');
   };
 
-  const handleAadhaarAutoFill = (decoded) => {
-    if (bookingTab === 'quick') {
-      setQuickName(decoded.fullName);
-      setNotes((prev) =>
-        prev
-          ? `${prev} | Aadhaar Verified: ${decoded.maskedId} (Ref: ${decoded.referenceId})`
-          : `Aadhaar Verified: ${decoded.maskedId} (Ref: ${decoded.referenceId})`
-      );
-    } else {
-      setGuestSource('new');
-      setDetailedGuest((prev) => ({
-        ...prev,
-        full_name: decoded.fullName,
-        address: decoded.address,
-        nationality: 'Indian',
-        id_document_type: 'Aadhaar',
-        id_document_number: decoded.maskedId,
-      }));
-      setNotes((prev) =>
-        prev
-          ? `${prev} | UIDAI Cryptographically Verified (${decoded.referenceId})`
-          : `UIDAI Cryptographically Verified via Secure QR (${decoded.referenceId})`
-      );
-    }
-    showToast(`Aadhaar details verified for ${decoded.fullName}! Form auto-filled.`, 'success');
-  };
-
-  const [errorMsg, setErrorMsg] = useState('');
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+
+    if (selectedRoomIds.length === 0) {
+      const msg = 'Please select at least one cottage room!';
+      setErrorMsg(msg);
+      showToast(msg, 'warning');
+      return;
+    }
 
     if (new Date(checkOutDate) <= new Date(checkInDate)) {
       const msg = 'Check-out date must be strictly after Check-in date!';
@@ -155,18 +200,19 @@ export const BookingModal = ({ isOpen, onClose }) => {
         return;
       }
 
-      const createdGuest = await addGuest({
+      // Automatically links to existing guest if phone matches, or creates new
+      const targetGuest = await addGuest({
         full_name: quickName.trim(),
         phone: quickPhone.trim(),
         nationality: 'Indian',
         id_document_type: 'Pending',
         id_document_number: 'Pending Check-In',
-        notes: 'Quick advance reservation. Complete ID details during check-in.',
+        notes: 'Quick reservation. ID verification pending.',
       });
 
-      if (createdGuest) {
-        targetGuestId = createdGuest.id;
-        targetGuestName = createdGuest.full_name;
+      if (targetGuest) {
+        targetGuestId = targetGuest.id;
+        targetGuestName = targetGuest.full_name;
       }
     } else {
       // --- TAB 2: DETAILED BOOKING & INSTANT CHECK-IN ---
@@ -178,7 +224,7 @@ export const BookingModal = ({ isOpen, onClose }) => {
           return;
         }
 
-        const createdGuest = await addGuest({
+        const targetGuest = await addGuest({
           full_name: detailedGuest.full_name.trim(),
           phone: detailedGuest.phone.trim(),
           email: detailedGuest.email,
@@ -189,9 +235,9 @@ export const BookingModal = ({ isOpen, onClose }) => {
           notes: notes,
         });
 
-        if (createdGuest) {
-          targetGuestId = createdGuest.id;
-          targetGuestName = createdGuest.full_name;
+        if (targetGuest) {
+          targetGuestId = targetGuest.id;
+          targetGuestName = targetGuest.full_name;
         }
       } else {
         if (!selectedGuestId) {
@@ -208,10 +254,11 @@ export const BookingModal = ({ isOpen, onClose }) => {
 
     const bookingStatusToUse = bookingTab === 'quick' ? 'Confirmed' : initialStatus;
 
+    // Multi-room booking creation
     const success = await addBooking({
       guest_id: targetGuestId,
       guest_name: targetGuestName,
-      room_id: roomId,
+      room_ids: selectedRoomIds,
       check_in_date: checkInDate,
       check_out_date: checkOutDate,
       num_guests: parseInt(numGuests, 10),
@@ -220,111 +267,103 @@ export const BookingModal = ({ isOpen, onClose }) => {
     });
 
     if (!success) {
-      setErrorMsg('Double Booking Blocked: This Cottage is already reserved for selected dates!');
+      setErrorMsg('Double Booking Blocked: One or more selected Cottages are already reserved for these dates!');
       return;
     }
 
-    if (success) {
-      // Upload any attached ID proof documents to Supabase Storage & Documents archive
-      if (targetGuestId && stagedFiles.length > 0) {
-        stagedFiles.forEach((stg) => {
-          addDocument({
-            guest_id: targetGuestId,
-            guest_name: targetGuestName,
-            file_name: stg.file_name,
-            file_path: `guest-documents/${targetGuestId}/${Date.now()}_${stg.file_name}`,
-            file_type: stg.file_type,
-            file_size: stg.file_size,
-            preview_url: stg.preview_url,
-            rawFile: stg.rawFile,
-          });
+    // Attach any staged ID proof photos to this guest record
+    if (targetGuestId && stagedFiles.length > 0) {
+      stagedFiles.forEach((stg) => {
+        addDocument({
+          guest_id: targetGuestId,
+          guest_name: targetGuestName,
+          file_name: stg.file_name,
+          file_path: `guest-documents/${targetGuestId}/${Date.now()}_${stg.file_name}`,
+          file_type: stg.file_type,
+          file_size: stg.file_size,
+          preview_url: stg.preview_url,
+          rawFile: stg.rawFile,
         });
-      }
-
-      // Reset form states
-      setQuickName('');
-      setQuickPhone('');
-      setDetailedGuest({
-        full_name: '',
-        phone: '',
-        email: '',
-        address: '',
-        nationality: 'Indian',
-        id_document_type: 'Aadhaar',
-        id_document_number: '',
       });
-      setStagedFiles([]);
-      onClose();
     }
+
+    // Reset form states
+    setQuickName('');
+    setQuickPhone('');
+    setDetailedGuest({
+      full_name: '',
+      phone: '',
+      email: '',
+      address: '',
+      nationality: 'Indian',
+      id_document_type: 'Aadhaar',
+      id_document_number: '',
+    });
+    setStagedFiles([]);
+    setNotes('');
+    onClose();
   };
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title="Create Cottage Reservation">
-        <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-          {/* Main Workflow Tabs */}
-          <div className="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1 text-xs font-semibold">
+      <Modal isOpen={isOpen} onClose={onClose} title="New Cottage Reservation & Check-In">
+        <form onSubmit={handleSubmit} className="space-y-4 max-h-[82vh] overflow-y-auto pr-1 text-slate-200">
+          {/* Main Booking Mode Tabs */}
+          <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
             <button
               type="button"
-              onClick={() => setBookingTab('quick')}
-              className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+              onClick={() => {
+                setBookingTab('quick');
+                setErrorMsg('');
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                 bookingTab === 'quick'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-md font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                  : 'bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800'
               }`}
             >
               <Zap className="w-3.5 h-3.5" />
-              Quick Booking (Name & Mobile Only)
+              Quick Advance Booking (Name & Mobile)
             </button>
             <button
               type="button"
-              onClick={() => setBookingTab('detailed')}
-              className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+              onClick={() => {
+                setBookingTab('detailed');
+                setErrorMsg('');
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                 bookingTab === 'detailed'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-md font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                  : 'bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800'
               }`}
             >
               <LogIn className="w-3.5 h-3.5" />
-              Detailed Booking & Instant Check-In
+              Detailed Walk-In & Instant Check-In
             </button>
           </div>
 
-          {/* ========================================================= */}
-          {/* TAB 1: QUICK BOOKING (ADVANCE / MINIMAL DETAILS) */}
-          {/* ========================================================= */}
-          {bookingTab === 'quick' ? (
-            <div className="p-4 rounded-xl bg-slate-950/80 border border-emerald-500/30 space-y-3">
+          {/* TAB 1: QUICK ADVANCE BOOKING */}
+          {bookingTab === 'quick' && (
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                  <UserPlus className="w-4 h-4" />
-                  Advance Reservation (ID proof captured later at Check-In)
+                <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <User className="w-4 h-4 text-emerald-400" />
+                  Primary Guest Contact
                 </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAadhaarScanner(true)}
-                    className="text-[11px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-semibold border border-emerald-500/20 flex items-center gap-1 transition-all"
-                  >
-                    <Camera className="w-3 h-3" />
-                    Scan Aadhaar
-                  </button>
-                  <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono border border-emerald-500/20 hidden sm:inline">
-                    Fast Phone Booking
-                  </span>
-                </div>
+                <span className="text-[10px] text-slate-400">
+                  Multiple bookings & rooms under same name supported
+                </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-emerald-400" />
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Guest Full Name *
                   </label>
                   <input
                     type="text"
-                    required={bookingTab === 'quick'}
-                    placeholder="e.g. Mathew Varghese"
+                    required
+                    placeholder="e.g. Rajesh Kumar"
                     value={quickName}
                     onChange={(e) => setQuickName(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-100 focus:outline-none focus:border-emerald-500"
@@ -332,141 +371,112 @@ export const BookingModal = ({ isOpen, onClose }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-emerald-400" />
-                    Mobile / Phone Number *
+                  <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-slate-400" />
+                    Mobile Number *
                   </label>
                   <input
                     type="tel"
-                    required={bookingTab === 'quick'}
-                    placeholder="e.g. +91 98470 55555"
+                    required
+                    placeholder="e.g. +91 98470 12345"
                     value={quickPhone}
                     onChange={(e) => setQuickPhone(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-100 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-100 focus:outline-none focus:border-emerald-500 font-mono"
                   />
                 </div>
               </div>
+
+              {/* Match Indicator if same guest exists */}
+              {matchingExistingGuest && (
+                <div className="p-2.5 rounded-xl bg-teal-950/40 border border-teal-500/30 flex items-center justify-between text-xs text-teal-300 animate-in fade-in">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-teal-400" />
+                    Existing guest profile found: <strong>{matchingExistingGuest.full_name}</strong>
+                  </span>
+                  <span className="text-[11px] text-teal-400 font-mono bg-teal-500/10 px-2 py-0.5 rounded">
+                    Auto-linking to profile
+                  </span>
+                </div>
+              )}
             </div>
-          ) : (
-            /* ========================================================= */
-            /* TAB 2: DETAILED BOOKING & INSTANT CHECK-IN (WALK-INS) */
-            /* ========================================================= */
+          )}
+
+          {/* TAB 2: DETAILED BOOKING & INSTANT CHECK-IN */}
+          {bookingTab === 'detailed' && (
             <div className="space-y-4">
-              {/* Guest Source Switcher: New Walk-in vs Existing Directory */}
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                    <User className="w-4 h-4 text-emerald-400" />
-                    Select Guest Entry Method:
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                {/* Guest Source Switcher */}
+                <div className="flex items-center gap-4 text-xs font-semibold border-b border-slate-800 pb-2">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="guestSource"
+                      value="new"
+                      checked={guestSource === 'new'}
+                      onChange={() => setGuestSource('new')}
+                      className="accent-emerald-500"
+                    />
+                    <span>New Walk-in Guest</span>
                   </label>
-                  <div className="flex items-center gap-3 text-xs">
-                    <label className="flex items-center gap-1.5 cursor-pointer text-slate-200 font-semibold">
-                      <input
-                        type="radio"
-                        name="guestSource"
-                        value="new"
-                        checked={guestSource === 'new'}
-                        onChange={() => setGuestSource('new')}
-                        className="accent-emerald-500"
-                      />
-                      <span>New Walk-In Guest</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer text-slate-300">
-                      <input
-                        type="radio"
-                        name="guestSource"
-                        value="existing"
-                        checked={guestSource === 'existing'}
-                        onChange={() => setGuestSource('existing')}
-                        className="accent-emerald-500"
-                      />
-                      <span>Existing Guest Directory</span>
-                    </label>
-                  </div>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="guestSource"
+                      value="existing"
+                      checked={guestSource === 'existing'}
+                      onChange={() => setGuestSource('existing')}
+                      className="accent-emerald-500"
+                    />
+                    <span>Registered Guest ({guests.length})</span>
+                  </label>
                 </div>
 
                 {guestSource === 'new' ? (
-                  /* Full Walk-In Guest Fields */
-                  <div className="space-y-3 pt-2 border-t border-slate-800">
-                    {/* Auto-Fill Banner for Detailed Mode */}
-                    <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-950/60 via-slate-900 to-teal-950/40 border border-emerald-500/30 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-xs">
-                        <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <div>
-                          <p className="font-bold text-slate-100">Scan Aadhaar for Instant Auto-Fill</p>
-                          <p className="text-[10px] text-slate-400">Pulls Name, Address & Masked ID directly from card QR</p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowAadhaarScanner(true)}
-                        className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all"
-                      >
-                        <Camera className="w-3.5 h-3.5" />
-                        Scan QR
-                      </button>
-                    </div>
-
+                  <div className="space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
-                          <User className="w-3 h-3 text-emerald-400" /> Full Name *
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          Guest Full Name *
                         </label>
                         <input
                           type="text"
-                          required={bookingTab === 'detailed' && guestSource === 'new'}
-                          placeholder="e.g. Ramesh Nair"
+                          required
+                          placeholder="e.g. Sarah Jenkins"
                           value={detailedGuest.full_name}
                           onChange={(e) => setDetailedGuest({ ...detailedGuest, full_name: e.target.value })}
                           className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
-                          <Phone className="w-3 h-3 text-slate-400" /> Mobile Number *
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          Mobile Phone *
                         </label>
                         <input
                           type="tel"
-                          required={bookingTab === 'detailed' && guestSource === 'new'}
-                          placeholder="e.g. +91 98470 00000"
+                          required
+                          placeholder="+91 / International"
                           value={detailedGuest.phone}
                           onChange={(e) => setDetailedGuest({ ...detailedGuest, phone: e.target.value })}
-                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500"
+                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500 font-mono"
                         />
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
-                          <Mail className="w-3 h-3 text-slate-400" /> Email Address
-                        </label>
-                        <input
-                          type="email"
-                          placeholder="guest@example.com"
-                          value={detailedGuest.email}
-                          onChange={(e) => setDetailedGuest({ ...detailedGuest, email: e.target.value })}
-                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
-                          <Globe className="w-3 h-3 text-slate-400" /> Nationality
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          Nationality
                         </label>
                         <input
                           type="text"
-                          placeholder="e.g. Indian, British"
                           value={detailedGuest.nationality}
                           onChange={(e) => setDetailedGuest({ ...detailedGuest, nationality: e.target.value })}
                           className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500"
                         />
                       </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
-                          <CreditCard className="w-3 h-3 text-emerald-400" /> ID Document Type *
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          ID Proof Type
                         </label>
                         <select
                           value={detailedGuest.id_document_type}
@@ -475,19 +485,18 @@ export const BookingModal = ({ isOpen, onClose }) => {
                         >
                           <option value="Aadhaar">Aadhaar Card</option>
                           <option value="Passport">Passport</option>
-                          <option value="Voter ID">Voter ID Card</option>
-                          <option value="Driver License">Driver's License</option>
+                          <option value="Voter ID">Voter ID</option>
+                          <option value="Driver License">Driver License</option>
                           <option value="Other">Other Government ID</option>
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                          ID Document Number *
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          ID Number
                         </label>
                         <input
                           type="text"
-                          required={bookingTab === 'detailed' && guestSource === 'new'}
-                          placeholder="e.g. 5489 1234 8901"
+                          placeholder="ID / Passport Number"
                           value={detailedGuest.id_document_number}
                           onChange={(e) => setDetailedGuest({ ...detailedGuest, id_document_number: e.target.value })}
                           className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-emerald-500 font-mono"
@@ -496,7 +505,7 @@ export const BookingModal = ({ isOpen, onClose }) => {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                      <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
                         <MapPin className="w-3 h-3 text-slate-400" /> Address
                       </label>
                       <input
@@ -509,7 +518,7 @@ export const BookingModal = ({ isOpen, onClose }) => {
                     </div>
                   </div>
                 ) : (
-                  /* Select Existing Guest Dropdown */
+                  /* Select Existing Guest Record */
                   <div className="pt-2 border-t border-slate-800">
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
                       Select Guest Record *
@@ -529,12 +538,12 @@ export const BookingModal = ({ isOpen, onClose }) => {
                 )}
               </div>
 
-              {/* Attach ID Documents Section */}
+              {/* Attach ID Documents Section (Take photo or browse file) */}
               <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
                   <h4 className="font-bold text-xs text-slate-200 flex items-center gap-1.5">
                     <Paperclip className="w-4 h-4 text-emerald-400" />
-                    Attach ID Proof Documents (Multiple Supported)
+                    Attach ID Proof Photos / Documents
                   </h4>
                   <span className="text-[10px] text-slate-400 font-mono">
                     {stagedFiles.length + existingGuestDocs.length} File(s)
@@ -545,14 +554,14 @@ export const BookingModal = ({ isOpen, onClose }) => {
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.jpg,.jpeg,.png"
+                    accept=".pdf,.jpg,.jpeg,.png,image/*"
                     onChange={handleMultipleFileChange}
                     className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                   />
                   <div className="flex items-center justify-center gap-2">
                     <Upload className="w-4 h-4 text-emerald-400" />
                     <span className="text-xs text-slate-300">
-                      Click or drag ID scans (Passport, Aadhaar, License)
+                      Take photo or upload ID scans (Passport, Aadhaar, License)
                     </span>
                   </div>
                 </div>
@@ -602,7 +611,7 @@ export const BookingModal = ({ isOpen, onClose }) => {
                       onChange={(e) => setInitialStatus(e.target.value)}
                       className="accent-emerald-500"
                     />
-                    <span>⚡ Instant Check-In & Mark Cottage OCCUPIED</span>
+                    <span>⚡ Instant Check-In & Mark Cottage(s) OCCUPIED</span>
                   </label>
                   <label className="flex items-center gap-1.5 cursor-pointer text-slate-300">
                     <input
@@ -620,110 +629,197 @@ export const BookingModal = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          {/* Cottage Room Picker */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <BedDouble className="w-3.5 h-3.5 text-emerald-400" />
-              Select Cottage Room *
-            </label>
-            <select
-              value={roomId}
-              onChange={(e) => setRoomId(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-emerald-500"
-              required
-            >
-              {rooms.map((r) => (
-                <option key={r.id} value={r.id}>
-                  Room {r.room_number} [{r.room_type} - Cap: {r.capacity} Guests] - Status: {r.status}
-                </option>
-              ))}
-            </select>
+          {/* STAY DATES PICKERS */}
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-emerald-400" />
+                Stay Dates
+              </span>
+              <span className="text-[11px] text-slate-400">
+                Check-in 2:00 PM • Check-out 11:00 AM
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Check-In Date *
+                </label>
+                <input
+                  type="date"
+                  value={checkInDate}
+                  onChange={(e) => setCheckInDate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-emerald-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Check-Out Date *
+                </label>
+                <input
+                  type="date"
+                  value={checkOutDate}
+                  onChange={(e) => setCheckOutDate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-emerald-500"
+                  required
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Date Pickers */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* MULTI-ROOM / COTTAGE SELECTOR */}
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div>
+                <h4 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <BedDouble className="w-4 h-4 text-emerald-400" />
+                  Select Cottages (Multi-Room Booking Supported) *
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Click to select one or multiple cottages under this guest's name
+                </p>
+              </div>
+              <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                {selectedRoomIds.length} Cottage{selectedRoomIds.length > 1 ? 's' : ''} Selected
+              </span>
+            </div>
+
+            {/* Cottage Selection Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+              {rooms.map((r) => {
+                const isSelected = selectedRoomIds.includes(r.id);
+                const availInfo = roomAvailability[r.id];
+                const isAvail = availInfo?.isAvailable;
+
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => toggleRoomSelection(r.id)}
+                    className={`p-3 rounded-xl border text-left transition-all relative flex flex-col justify-between ${
+                      isSelected
+                        ? 'bg-emerald-950/40 border-emerald-500 shadow-md shadow-emerald-950'
+                        : isAvail
+                        ? 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                        : 'bg-slate-900/40 border-rose-950/50 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 font-bold text-xs text-slate-100">
+                          <span>Room {r.room_number}</span>
+                          <span className="text-[10px] font-normal text-slate-400">({r.room_type})</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                          <Users className="w-3 h-3 text-slate-500" />
+                          Max: {r.capacity} Guests • ₹{r.price_per_night || 3500}/night
+                        </div>
+                      </div>
+
+                      {/* Checkbox indicator */}
+                      <div
+                        className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected
+                            ? 'bg-emerald-500 border-emerald-400 text-white'
+                            : 'border-slate-700 bg-slate-800'
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 pt-1.5 border-t border-slate-800/60 flex items-center justify-between text-[10px]">
+                      {isAvail ? (
+                        <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          Available for dates
+                        </span>
+                      ) : (
+                        <span className="text-rose-400 font-semibold flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          Booked on selected dates
+                        </span>
+                      )}
+
+                      {isSelected && (
+                        <span className="text-emerald-300 font-bold">Selected</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Guest Count & Notes */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                Check-In Date *
+              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-slate-400" />
+                Total Number of Guests *
               </label>
               <input
-                type="date"
-                value={checkInDate}
-                onChange={(e) => setCheckInDate(e.target.value)}
+                type="number"
+                min="1"
+                max="25"
+                value={numGuests}
+                onChange={(e) => setNumGuests(e.target.value)}
                 className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-emerald-500"
                 required
               />
             </div>
+
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                Check-Out Date *
+              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-slate-400" />
+                Special Requests / Staff Notes
               </label>
               <input
-                type="date"
-                value={checkOutDate}
-                onChange={(e) => setCheckOutDate(e.target.value)}
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. Extra mattress, campfire request, late arrival..."
                 className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-emerald-500"
-                required
               />
             </div>
-          </div>
-
-          {/* Guest Count */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Number of Guests *
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="10"
-              value={numGuests}
-              onChange={(e) => setNumGuests(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-emerald-500"
-              required
-            />
-          </div>
-
-          {/* Booking Notes */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-slate-400" />
-              Special Requests / Staff Notes
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Food preferences, extra bed request, campfire preference..."
-              className="w-full h-16 px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-emerald-500"
-            />
           </div>
 
           {/* Inline Error Alert Box */}
           {errorMsg && (
-            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs font-semibold flex items-center gap-2 animate-shake">
-              <span className="shrink-0 w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
 
           {/* Submit Actions */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold shadow-lg shadow-emerald-900/30 transition-all flex items-center gap-1.5"
-            >
-              {bookingTab === 'quick' ? <Zap className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-              {bookingTab === 'quick' ? 'Save Quick Reservation' : initialStatus === 'Checked In' ? 'Instant Check-In Guest & Assign Room' : 'Confirm & Save Booking'}
-            </button>
+          <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+            <span className="text-xs text-slate-400">
+              Booking {selectedRoomIds.length} cottage{selectedRoomIds.length > 1 ? 's' : ''} for {numGuests} guest{numGuests > 1 ? 's' : ''}
+            </span>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold shadow-lg shadow-emerald-900/30 transition-all flex items-center gap-1.5"
+              >
+                {bookingTab === 'quick' ? <Zap className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                {bookingTab === 'quick'
+                  ? `Save Quick Booking (${selectedRoomIds.length} Room${selectedRoomIds.length > 1 ? 's' : ''})`
+                  : initialStatus === 'Checked In'
+                  ? `Instant Check-In (${selectedRoomIds.length} Room${selectedRoomIds.length > 1 ? 's' : ''})`
+                  : `Confirm Reservation (${selectedRoomIds.length} Room${selectedRoomIds.length > 1 ? 's' : ''})`}
+              </button>
+            </div>
           </div>
         </form>
       </Modal>
@@ -733,13 +829,6 @@ export const BookingModal = ({ isOpen, onClose }) => {
         isOpen={!!previewDoc}
         onClose={() => setPreviewDoc(null)}
         doc={previewDoc}
-      />
-
-      {/* Aadhaar Scanner Modal */}
-      <AadhaarScannerModal
-        isOpen={showAadhaarScanner}
-        onClose={() => setShowAadhaarScanner(false)}
-        onAutoFill={handleAadhaarAutoFill}
       />
     </>
   );

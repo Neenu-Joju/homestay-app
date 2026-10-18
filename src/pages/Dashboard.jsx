@@ -6,7 +6,6 @@ import { CheckOutModal } from '../components/modals/CheckOutModal';
 import { BookingModal } from '../components/modals/BookingModal';
 import { GuestModal } from '../components/modals/GuestModal';
 import { DocumentUploadModal } from '../components/modals/DocumentUploadModal';
-import { AadhaarScannerModal } from '../components/modals/AadhaarScannerModal';
 import {
   LogIn,
   LogOut,
@@ -19,11 +18,11 @@ import {
   ArrowRight,
   Clock,
   ShieldAlert,
-  ShieldCheck,
+  XCircle,
 } from 'lucide-react';
 
 export const Dashboard = () => {
-  const { bookings = [], rooms = [], guests = [], documents = [] } = useApp();
+  const { bookings = [], rooms = [], guests = [], documents = [], cancelBooking } = useApp();
 
   const [activeCheckInBooking, setActiveCheckInBooking] = useState(null);
   const [activeCheckOutBooking, setActiveCheckOutBooking] = useState(null);
@@ -32,8 +31,6 @@ export const Dashboard = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [showDocModal, setShowDocModal] = useState(false);
-  const [showAadhaarModal, setShowAadhaarModal] = useState(false);
-  const [prefilledGuestData, setPrefilledGuestData] = useState(null);
 
   // Safe Array Fallbacks
   const safeBookings = Array.isArray(bookings) ? bookings : [];
@@ -41,24 +38,43 @@ export const Dashboard = () => {
   const safeGuests = Array.isArray(guests) ? guests : [];
   const safeDocuments = Array.isArray(documents) ? documents : [];
 
-  // Today's Date calculation (Matches current real date or seed date)
-  const realTodayStr = new Date().toISOString().split('T')[0];
-  const seedTodayStr = '2026-08-17';
+  // Local calendar date (YYYY-MM-DD)
+  const getLocalDateStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
-  const isTodayDate = (dateStr) => dateStr === seedTodayStr || dateStr === realTodayStr;
+  const todayStr = getLocalDateStr();
 
   // Metrics
+  // Today's Check-ins: Strictly confirmed bookings scheduled for today (not past, not future)
   const todayCheckIns = safeBookings.filter(
-    (b) => b && isTodayDate(b.check_in_date) && b.status === 'Confirmed'
+    (b) => b && b.check_in_date === todayStr && b.status === 'Confirmed'
   );
+
+  // Today's Check-outs: Strictly checked-in bookings departing today
   const todayCheckOuts = safeBookings.filter(
-    (b) => b && isTodayDate(b.check_out_date) && b.status === 'Checked In'
+    (b) => b && b.check_out_date === todayStr && b.status === 'Checked In'
   );
+
   const occupiedRooms = safeRooms.filter((r) => r && r.status === 'Occupied');
   const availableRooms = safeRooms.filter((r) => r && r.status === 'Available');
+
+  // Upcoming Bookings: Strictly future or today's confirmed bookings (exclude any past dates that were not checked in)
   const upcomingBookings = safeBookings
-    .filter((b) => b && b.status === 'Confirmed' && (b.check_in_date >= seedTodayStr || b.check_in_date >= realTodayStr))
+    .filter((b) => b && b.status === 'Confirmed' && b.check_in_date >= todayStr)
     .sort((a, b) => new Date(a.check_in_date) - new Date(b.check_in_date));
+
+  const handleCancelReservation = async (b) => {
+    if (!b) return;
+    const confirmMsg = `Cancel reservation for ${b.guest_name || 'Guest'} (Room ${b.room_number || ''}, Ref: ${b.booking_ref || ''})?`;
+    if (window.confirm(confirmMsg)) {
+      await cancelBooking(b.id);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -104,13 +120,6 @@ export const Dashboard = () => {
           >
             <Upload className="w-4 h-4 text-sky-400" />
             Upload ID Doc
-          </button>
-          <button
-            onClick={() => setShowAadhaarModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-emerald-500/30 text-xs font-semibold transition-all hover:border-emerald-500/60 shadow-sm"
-          >
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            Scan Aadhaar
           </button>
         </div>
       </div>
@@ -228,13 +237,23 @@ export const Dashboard = () => {
                         </p>
                       )}
                     </div>
-                    <button
-                      onClick={() => setActiveCheckInBooking(b)}
-                      className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md shadow-emerald-900/30 shrink-0 flex items-center gap-1.5"
-                    >
-                      <LogIn className="w-3.5 h-3.5" />
-                      Check In
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => handleCancelReservation(b)}
+                        className="px-2.5 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-semibold transition-all flex items-center gap-1"
+                        title="Cancel this reservation"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => setActiveCheckInBooking(b)}
+                        className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md shadow-emerald-900/30 shrink-0 flex items-center gap-1.5"
+                      >
+                        <LogIn className="w-3.5 h-3.5" />
+                        Check In
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -314,29 +333,64 @@ export const Dashboard = () => {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {upcomingBookings.slice(0, 3).map((b) => {
-            if (!b) return null;
-            return (
-              <div
-                key={b.id || Math.random()}
-                className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 hover:border-slate-700 transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono text-emerald-400 font-bold">
-                    {b.booking_ref}
-                  </span>
-                  <StatusBadge status={b.status} />
+        {upcomingBookings.length === 0 ? (
+          <div className="py-8 text-center text-slate-500 text-xs">
+            No upcoming reservations scheduled.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {upcomingBookings.slice(0, 6).map((b) => {
+              if (!b) return null;
+              const isToday = b.check_in_date === todayStr;
+              return (
+                <div
+                  key={b.id || Math.random()}
+                  className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 hover:border-slate-700 transition-all flex flex-col justify-between"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                        {b.booking_ref}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {isToday && (
+                          <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-semibold px-1.5 py-0.5 rounded border border-emerald-500/30">
+                            Today
+                          </span>
+                        )}
+                        <StatusBadge status={b.status} />
+                      </div>
+                    </div>
+                    <p className="font-bold text-sm text-slate-100">{b.guest_name || 'Guest'}</p>
+                    <div className="text-xs text-slate-400 space-y-0.5">
+                      <p>Room: <strong className="text-slate-300">{b.room_number}</strong></p>
+                      <p>Check-in: <strong className="text-slate-300">{b.check_in_date}</strong></p>
+                      <p>Check-out: <strong className="text-slate-300">{b.check_out_date}</strong></p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => handleCancelReservation(b)}
+                      className="px-2 py-1 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 text-xs font-medium flex items-center gap-1 transition-colors"
+                      title="Cancel Reservation"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => setActiveCheckInBooking(b)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs font-semibold flex items-center gap-1 transition-colors shadow-sm"
+                    >
+                      <LogIn className="w-3 h-3" />
+                      Check In
+                    </button>
+                  </div>
                 </div>
-                <p className="font-bold text-sm text-slate-100">{b.guest_name || 'Guest'}</p>
-                <div className="text-xs text-slate-400 space-y-0.5">
-                  <p>Room: <strong className="text-slate-300">{b.room_number}</strong></p>
-                  <p>Check-in: <strong className="text-slate-300">{b.check_in_date}</strong></p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Check-In Modal */}
@@ -362,34 +416,13 @@ export const Dashboard = () => {
       {/* Add Guest Modal */}
       <GuestModal
         isOpen={showGuestModal}
-        onClose={() => {
-          setShowGuestModal(false);
-          setPrefilledGuestData(null);
-        }}
-        prefillData={prefilledGuestData}
+        onClose={() => setShowGuestModal(false)}
       />
 
       {/* Upload Document Modal */}
       <DocumentUploadModal
         isOpen={showDocModal}
         onClose={() => setShowDocModal(false)}
-      />
-
-      {/* Aadhaar QR Scanner & Verifier Modal */}
-      <AadhaarScannerModal
-        isOpen={showAadhaarModal}
-        onClose={() => setShowAadhaarModal(false)}
-        onRegisterGuest={(aadhaarData) => {
-          setPrefilledGuestData({
-            full_name: aadhaarData.fullName,
-            address: aadhaarData.address,
-            nationality: 'Indian',
-            id_document_type: 'Aadhaar',
-            id_document_number: aadhaarData.maskedId,
-            notes: `UIDAI Cryptographically Verified via Secure QR (Ref: ${aadhaarData.referenceId})`,
-          });
-          setShowGuestModal(true);
-        }}
       />
     </div>
   );

@@ -28,6 +28,16 @@ export const Bookings = () => {
   const [activeCheckOut, setActiveCheckOut] = useState(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
 
+  // Local calendar date (YYYY-MM-DD)
+  const getLocalDateStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const todayStr = getLocalDateStr();
+
   // Filter Bookings logic
   const filteredBookings = bookings.filter((b) => {
     const matchesSearch =
@@ -39,10 +49,15 @@ export const Bookings = () => {
       selectedRoomFilter === 'all' || b.room_id === selectedRoomFilter;
 
     let matchesTab = true;
-    if (activeTab === 'Upcoming') matchesTab = b.status === 'Confirmed';
-    else if (activeTab === 'Checked In') matchesTab = b.status === 'Checked In';
-    else if (activeTab === 'Checked Out') matchesTab = b.status === 'Checked Out';
-    else if (activeTab === 'Cancelled') matchesTab = b.status === 'Cancelled';
+    if (activeTab === 'Upcoming') {
+      matchesTab = b.status === 'Confirmed' && b.check_in_date >= todayStr;
+    } else if (activeTab === 'Checked In') {
+      matchesTab = b.status === 'Checked In';
+    } else if (activeTab === 'Checked Out') {
+      matchesTab = b.status === 'Checked Out';
+    } else if (activeTab === 'Cancelled') {
+      matchesTab = b.status === 'Cancelled';
+    }
 
     return matchesSearch && matchesRoom && matchesTab;
   });
@@ -208,7 +223,11 @@ export const Bookings = () => {
 
                         {b.status !== 'Checked Out' && b.status !== 'Cancelled' && (
                           <button
-                            onClick={() => cancelBooking(b.id)}
+                            onClick={() => {
+                              if (window.confirm(`Cancel reservation for ${b.guest_name} (${b.booking_ref})?`)) {
+                                cancelBooking(b.id);
+                              }
+                            }}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
                             title="Cancel Reservation"
                           >

@@ -3,7 +3,6 @@ import { useApp } from '../context/AppContext';
 import { GuestModal } from '../components/modals/GuestModal';
 import { DocumentUploadModal } from '../components/modals/DocumentUploadModal';
 import { DocumentViewerModal } from '../components/modals/DocumentViewerModal';
-import { AadhaarScannerModal } from '../components/modals/AadhaarScannerModal';
 import { Modal } from '../components/common/Modal';
 import {
   Users,
@@ -34,8 +33,6 @@ export const Guests = () => {
   const [viewingGuest, setViewingGuest] = useState(null);
   const [showDocUploadModal, setShowDocUploadModal] = useState(false);
   const [uploadGuestId, setUploadGuestId] = useState('');
-  const [showAadhaarScanner, setShowAadhaarScanner] = useState(false);
-  const [prefilledData, setPrefilledData] = useState(null);
 
   // Active Detail Tab inside Drawer Modal
   const [detailTab, setDetailTab] = useState('info'); // 'info' | 'history' | 'docs'
@@ -82,16 +79,8 @@ export const Guests = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowAadhaarScanner(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-emerald-500/30 text-xs font-semibold transition-all hover:border-emerald-500/60 shadow-sm"
-          >
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            Scan Aadhaar QR
-          </button>
-          <button
             onClick={() => {
               setEditingGuest(null);
-              setPrefilledData(null);
               setShowGuestModal(true);
             }}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold shadow-lg shadow-emerald-900/30 transition-all"
@@ -425,7 +414,6 @@ export const Guests = () => {
           setPrefilledData(null);
         }}
         guestToEdit={editingGuest}
-        prefillData={prefilledData}
       />
 
       {/* Document Upload Modal */}
@@ -433,24 +421,6 @@ export const Guests = () => {
         isOpen={showDocUploadModal}
         onClose={() => setShowDocUploadModal(false)}
         defaultGuestId={uploadGuestId}
-      />
-
-      {/* Aadhaar Scanner Modal */}
-      <AadhaarScannerModal
-        isOpen={showAadhaarScanner}
-        onClose={() => setShowAadhaarScanner(false)}
-        onRegisterGuest={(aadhaarData) => {
-          setEditingGuest(null);
-          setPrefilledData({
-            full_name: aadhaarData.fullName,
-            address: aadhaarData.address,
-            nationality: 'Indian',
-            id_document_type: 'Aadhaar',
-            id_document_number: aadhaarData.maskedId,
-            notes: `UIDAI Cryptographically Verified via Secure QR (Ref: ${aadhaarData.referenceId})`,
-          });
-          setShowGuestModal(true);
-        }}
       />
     </div>
   );
