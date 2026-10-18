@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { useApp } from '../../context/AppContext';
-import { LogIn, ShieldCheck, AlertCircle, FileText, CreditCard, Upload, Paperclip } from 'lucide-react';
+import { AadhaarScannerModal } from './AadhaarScannerModal';
+import { LogIn, ShieldCheck, AlertCircle, FileText, CreditCard, Upload, Paperclip, Camera } from 'lucide-react';
 
 export const CheckInModal = ({ isOpen, onClose, booking }) => {
   const { guests, processCheckIn, updateGuest, documents, addDocument, showToast } = useApp();
+  const [showAadhaarScanner, setShowAadhaarScanner] = useState(false);
 
   const [staffNotes, setStaffNotes] = useState('');
   const [verifiedId, setVerifiedId] = useState(true);
@@ -80,7 +82,8 @@ export const CheckInModal = ({ isOpen, onClose, booking }) => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Guest Check-In & Verification">
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} title="Guest Check-In & Verification">
       <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
         {/* Booking Summary Box */}
         <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
@@ -131,10 +134,20 @@ export const CheckInModal = ({ isOpen, onClose, booking }) => {
 
         {/* Complete ID Proof Details Section */}
         <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-          <h4 className="font-bold text-xs text-slate-200 flex items-center gap-1.5 border-b border-slate-800 pb-2">
-            <CreditCard className="w-4 h-4 text-emerald-400" />
-            Complete / Verify ID Proof Details
-          </h4>
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <h4 className="font-bold text-xs text-slate-200 flex items-center gap-1.5">
+              <CreditCard className="w-4 h-4 text-emerald-400" />
+              Complete / Verify ID Proof Details
+            </h4>
+            <button
+              type="button"
+              onClick={() => setShowAadhaarScanner(true)}
+              className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold flex items-center gap-1 transition-all"
+            >
+              <Camera className="w-3 h-3" />
+              Scan Aadhaar QR
+            </button>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -238,6 +251,23 @@ export const CheckInModal = ({ isOpen, onClose, booking }) => {
         </div>
       </form>
     </Modal>
+
+    {/* Aadhaar Scanner Modal */}
+    <AadhaarScannerModal
+      isOpen={showAadhaarScanner}
+      onClose={() => setShowAadhaarScanner(false)}
+      onAutoFill={(decoded) => {
+        setIdType('Aadhaar');
+        setIdNumber(decoded.maskedId);
+        setStaffNotes((prev) =>
+          prev
+            ? `${prev} | Aadhaar QR Verified (${decoded.referenceId})`
+            : `UIDAI Cryptographically Verified via Secure QR (${decoded.referenceId})`
+        );
+        showToast(`Aadhaar details captured for ${decoded.fullName}!`, 'success');
+      }}
+    />
+  </>
   );
 };
 

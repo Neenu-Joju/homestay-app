@@ -6,6 +6,7 @@ import { CheckOutModal } from '../components/modals/CheckOutModal';
 import { BookingModal } from '../components/modals/BookingModal';
 import { GuestModal } from '../components/modals/GuestModal';
 import { DocumentUploadModal } from '../components/modals/DocumentUploadModal';
+import { AadhaarScannerModal } from '../components/modals/AadhaarScannerModal';
 import {
   LogIn,
   LogOut,
@@ -18,6 +19,7 @@ import {
   ArrowRight,
   Clock,
   ShieldAlert,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const Dashboard = () => {
@@ -30,6 +32,8 @@ export const Dashboard = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [showDocModal, setShowDocModal] = useState(false);
+  const [showAadhaarModal, setShowAadhaarModal] = useState(false);
+  const [prefilledGuestData, setPrefilledGuestData] = useState(null);
 
   // Safe Array Fallbacks
   const safeBookings = Array.isArray(bookings) ? bookings : [];
@@ -100,6 +104,13 @@ export const Dashboard = () => {
           >
             <Upload className="w-4 h-4 text-sky-400" />
             Upload ID Doc
+          </button>
+          <button
+            onClick={() => setShowAadhaarModal(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-emerald-500/30 text-xs font-semibold transition-all hover:border-emerald-500/60 shadow-sm"
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            Scan Aadhaar
           </button>
         </div>
       </div>
@@ -351,13 +362,34 @@ export const Dashboard = () => {
       {/* Add Guest Modal */}
       <GuestModal
         isOpen={showGuestModal}
-        onClose={() => setShowGuestModal(false)}
+        onClose={() => {
+          setShowGuestModal(false);
+          setPrefilledGuestData(null);
+        }}
+        prefillData={prefilledGuestData}
       />
 
       {/* Upload Document Modal */}
       <DocumentUploadModal
         isOpen={showDocModal}
         onClose={() => setShowDocModal(false)}
+      />
+
+      {/* Aadhaar QR Scanner & Verifier Modal */}
+      <AadhaarScannerModal
+        isOpen={showAadhaarModal}
+        onClose={() => setShowAadhaarModal(false)}
+        onRegisterGuest={(aadhaarData) => {
+          setPrefilledGuestData({
+            full_name: aadhaarData.fullName,
+            address: aadhaarData.address,
+            nationality: 'Indian',
+            id_document_type: 'Aadhaar',
+            id_document_number: aadhaarData.maskedId,
+            notes: `UIDAI Cryptographically Verified via Secure QR (Ref: ${aadhaarData.referenceId})`,
+          });
+          setShowGuestModal(true);
+        }}
       />
     </div>
   );

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { useApp } from '../../context/AppContext';
 import { DocumentViewerModal } from './DocumentViewerModal';
+import { AadhaarScannerModal } from './AadhaarScannerModal';
 import {
   Calendar,
   User,
@@ -20,10 +21,13 @@ import {
   Mail,
   CheckCircle2,
   LogIn,
+  ShieldCheck,
+  Camera,
 } from 'lucide-react';
 
 export const BookingModal = ({ isOpen, onClose }) => {
   const { guests, rooms, documents, addGuest, addBooking, addDocument, deleteDocument, showToast } = useApp();
+  const [showAadhaarScanner, setShowAadhaarScanner] = useState(false);
 
   const todayStr = new Date().toISOString().split('T')[0];
   const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
@@ -97,6 +101,33 @@ export const BookingModal = ({ isOpen, onClose }) => {
   const removeStagedFile = (fileId) => {
     setStagedFiles((prev) => prev.filter((f) => f.id !== fileId));
     showToast('Attached file removed', 'info');
+  };
+
+  const handleAadhaarAutoFill = (decoded) => {
+    if (bookingTab === 'quick') {
+      setQuickName(decoded.fullName);
+      setNotes((prev) =>
+        prev
+          ? `${prev} | Aadhaar Verified: ${decoded.maskedId} (Ref: ${decoded.referenceId})`
+          : `Aadhaar Verified: ${decoded.maskedId} (Ref: ${decoded.referenceId})`
+      );
+    } else {
+      setGuestSource('new');
+      setDetailedGuest((prev) => ({
+        ...prev,
+        full_name: decoded.fullName,
+        address: decoded.address,
+        nationality: 'Indian',
+        id_document_type: 'Aadhaar',
+        id_document_number: decoded.maskedId,
+      }));
+      setNotes((prev) =>
+        prev
+          ? `${prev} | UIDAI Cryptographically Verified (${decoded.referenceId})`
+          : `UIDAI Cryptographically Verified via Secure QR (${decoded.referenceId})`
+      );
+    }
+    showToast(`Aadhaar details verified for ${decoded.fullName}! Form auto-filled.`, 'success');
   };
 
   const [errorMsg, setErrorMsg] = useState('');
@@ -269,9 +300,19 @@ export const BookingModal = ({ isOpen, onClose }) => {
                   <UserPlus className="w-4 h-4" />
                   Advance Reservation (ID proof captured later at Check-In)
                 </span>
-                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono border border-emerald-500/20">
-                  Fast Phone Booking
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAadhaarScanner(true)}
+                    className="text-[11px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-semibold border border-emerald-500/20 flex items-center gap-1 transition-all"
+                  >
+                    <Camera className="w-3 h-3" />
+                    Scan Aadhaar
+                  </button>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono border border-emerald-500/20 hidden sm:inline">
+                    Fast Phone Booking
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -347,6 +388,25 @@ export const BookingModal = ({ isOpen, onClose }) => {
                 {guestSource === 'new' ? (
                   /* Full Walk-In Guest Fields */
                   <div className="space-y-3 pt-2 border-t border-slate-800">
+                    {/* Auto-Fill Banner for Detailed Mode */}
+                    <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-950/60 via-slate-900 to-teal-950/40 border border-emerald-500/30 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-xs">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <div>
+                          <p className="font-bold text-slate-100">Scan Aadhaar for Instant Auto-Fill</p>
+                          <p className="text-[10px] text-slate-400">Pulls Name, Address & Masked ID directly from card QR</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowAadhaarScanner(true)}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        Scan QR
+                      </button>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
@@ -673,6 +733,13 @@ export const BookingModal = ({ isOpen, onClose }) => {
         isOpen={!!previewDoc}
         onClose={() => setPreviewDoc(null)}
         doc={previewDoc}
+      />
+
+      {/* Aadhaar Scanner Modal */}
+      <AadhaarScannerModal
+        isOpen={showAadhaarScanner}
+        onClose={() => setShowAadhaarScanner(false)}
+        onAutoFill={handleAadhaarAutoFill}
       />
     </>
   );

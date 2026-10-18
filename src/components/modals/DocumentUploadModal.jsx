@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { useApp } from '../../context/AppContext';
-import { Upload, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { AadhaarScannerModal } from './AadhaarScannerModal';
+import { Upload, FileText, CheckCircle2, AlertCircle, Camera, ShieldCheck } from 'lucide-react';
 
 export const DocumentUploadModal = ({ isOpen, onClose, defaultGuestId = '' }) => {
   const { guests, addDocument, showToast } = useApp();
   const [selectedGuestId, setSelectedGuestId] = useState(defaultGuestId || guests[0]?.id || '');
   const [docType, setDocType] = useState('Passport');
   const [simulatedFile, setSimulatedFile] = useState(null);
+  const [showAadhaarScanner, setShowAadhaarScanner] = useState(false);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -48,13 +50,42 @@ export const DocumentUploadModal = ({ isOpen, onClose, defaultGuestId = '' }) =>
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Upload Guest ID Document">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Select Guest */}
-        <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-            Target Guest Record *
-          </label>
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} title="Upload Guest ID Document">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Quick Aadhaar Scanner Banner */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-slate-900 to-teal-950/40 border border-emerald-500/30 flex items-center justify-between gap-3 shadow-md">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+                  Scan Physical Card QR
+                  <span className="text-[10px] font-normal text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                    Offline Validation
+                  </span>
+                </p>
+                <p className="text-[10px] text-slate-400">
+                  Validates UIDAI authenticity signature and auto-classifies proof
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAadhaarScanner(true)}
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold shadow-md shadow-emerald-900/30 transition-all flex items-center gap-1.5 shrink-0"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>Scan QR</span>
+            </button>
+          </div>
+
+          {/* Select Guest */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              Target Guest Record *
+            </label>
           <select
             value={selectedGuestId}
             onChange={(e) => setSelectedGuestId(e.target.value)}
@@ -145,5 +176,24 @@ export const DocumentUploadModal = ({ isOpen, onClose, defaultGuestId = '' }) =>
         </div>
       </form>
     </Modal>
+
+    {/* Aadhaar Scanner Modal */}
+    <AadhaarScannerModal
+      isOpen={showAadhaarScanner}
+      onClose={() => setShowAadhaarScanner(false)}
+      onAutoFill={(decoded) => {
+        setDocType('Aadhaar');
+        // If guest matches by name, auto-select them
+        const matchingGuest = guests.find(
+          (g) => g.full_name.toLowerCase().includes(decoded.fullName.toLowerCase()) ||
+                 decoded.fullName.toLowerCase().includes(g.full_name.toLowerCase())
+        );
+        if (matchingGuest) {
+          setSelectedGuestId(matchingGuest.id);
+        }
+        showToast(`Aadhaar verified (${decoded.maskedId})! Auto-selected Aadhaar category.`, 'success');
+      }}
+    />
+  </>
   );
 };
