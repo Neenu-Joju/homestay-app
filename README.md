@@ -400,3 +400,11 @@ Rejchachan homestay/
      * Username: `admin`
      * Password: `somajam2026`
      *(Or click the "Auto Fill" button on the login screen)*
+
+---
+
+## 11. Hosting & Database Infrastructure Reference
+
+For complete step-by-step instructions on production hosting, Vercel CI/CD pipelines, Supabase database configuration, schema migrations, and environment keys, refer to:
+* **[DEPLOYMENT_AND_DATABASE.md](file:///c:/1.JGM%20Personal%20Data/Neenu%20web%20application/Rejchachan%20homestay/DEPLOYMENT_AND_DATABASE.md)**
+
