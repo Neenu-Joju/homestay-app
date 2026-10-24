@@ -1,23 +1,50 @@
 import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { useApp } from '../../context/AppContext';
-import { Upload, FileText, CheckCircle2, AlertCircle, Camera, ShieldCheck } from 'lucide-react';
+import { Upload, FileText, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { compressImage } from '../../utils/imageCompressor';
 
 export const DocumentUploadModal = ({ isOpen, onClose, defaultGuestId = '' }) => {
   const { guests, addDocument, showToast } = useApp();
   const [selectedGuestId, setSelectedGuestId] = useState(defaultGuestId || guests[0]?.id || '');
-  const [docType, setDocType] = useState('Passport');
+  const [docType, setDocType] = useState('Aadhaar');
   const [simulatedFile, setSimulatedFile] = useState(null);
+  const [compressInfo, setCompressInfo] = useState(null);
+  const [isCompressing, setIsCompressing] = useState(false);
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        showToast('File exceeds 5 MB limit!', 'error');
-        return;
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      showToast('File exceeds 15 MB limit! Please pick a smaller file.', 'error');
+      return;
+    }
+
+    if (file.type.startsWith('image/')) {
+      setIsCompressing(true);
+      try {
+        const compressed = await compressImage(file, {
+          maxWidth: 1600,
+          maxHeight: 1600,
+          quality: 0.78,
+        });
+        setSimulatedFile(compressed.file);
+        setCompressInfo(compressed);
+        if (compressed.savedPercent !== '0%') {
+          showToast(`Compressed photo: ${compressed.originalFormatted} → ${compressed.compressedFormatted} (Saved ${compressed.savedPercent} storage)`, 'success');
+        }
+      } catch {
+        file.preview_url = URL.createObjectURL(file);
+        setSimulatedFile(file);
+      } finally {
+        setIsCompressing(false);
       }
+    } else {
+      // PDF or document
       file.preview_url = URL.createObjectURL(file);
       setSimulatedFile(file);
+      setCompressInfo(null);
     }
   };
 
@@ -30,20 +57,26 @@ export const DocumentUploadModal = ({ isOpen, onClose, defaultGuestId = '' }) =>
     const guest = guests.find((g) => g.id === selectedGuestId);
     const fileName = simulatedFile
       ? simulatedFile.name
-      : `${guest?.full_name?.toLowerCase().replace(/\s+/g, '_')}_${docType.toLowerCase()}.pdf`;
+      : `${guest?.full_name?.toLowerCase().replace(/\s+/g, '_')}_${docType.toLowerCase()}.jpg`;
 
     addDocument({
       guest_id: selectedGuestId,
       guest_name: guest ? guest.full_name : 'Guest',
+      id_document_type: docType,
       file_name: fileName,
       file_path: `guest-documents/${selectedGuestId}/${Date.now()}_${fileName}`,
       file_type: simulatedFile ? simulatedFile.type : 'image/jpeg',
-      file_size: simulatedFile ? `${(simulatedFile.size / (1024 * 1024)).toFixed(1)} MB` : '1.8 MB',
-      preview_url: simulatedFile ? simulatedFile.preview_url : null,
+      file_size: simulatedFile
+        ? simulatedFile.size > 1024 * 1024
+          ? `${(simulatedFile.size / (1024 * 1024)).toFixed(1)} MB`
+          : `${(simulatedFile.size / 1024).toFixed(0)} KB`
+        : '220 KB',
+      preview_url: compressInfo?.previewUrl || simulatedFile?.preview_url || null,
       rawFile: simulatedFile || null,
     });
 
     setSimulatedFile(null);
+    setCompressInfo(null);
     onClose();
   };
 
@@ -100,10 +133,22 @@ export const DocumentUploadModal = ({ isOpen, onClose, defaultGuestId = '' }) =>
             <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Upload className="w-6 h-6 text-emerald-400" />
             </div>
-            {simulatedFile ? (
-              <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Selected: {simulatedFile.name} ({(simulatedFile.size / 1024).toFixed(0)} KB)</span>
+            {isCompressing ? (
+              <p className="text-xs font-semibold text-emerald-400 animate-pulse">
+                Optimizing photo to preserve cloud database free tier...
+              </p>
+            ) : simulatedFile ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-center gap-2 text-emerald-400 text-xs font-semibold">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Selected: {simulatedFile.name} ({(simulatedFile.size / 1024).toFixed(0)} KB)</span>
+                </div>
+                {compressInfo && compressInfo.savedPercent !== '0%' && (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-300 font-medium">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Free Tier Protected: Saved {compressInfo.savedPercent} ({compressInfo.originalFormatted} → {compressInfo.compressedFormatted})</span>
+                  </div>
+                )}
               </div>
             ) : (
               <>
@@ -111,7 +156,7 @@ export const DocumentUploadModal = ({ isOpen, onClose, defaultGuestId = '' }) =>
                   Click or drag file here to attach
                 </p>
                 <p className="text-[11px] text-slate-400">
-                  Supported: PDF, JPG, PNG (Max file size: 5 MB)
+                  Supported: JPG, PNG, PDF (Images auto-compressed to preserve free storage)
                 </p>
               </>
             )}

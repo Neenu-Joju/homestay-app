@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { FileText, Download, ShieldCheck, Image as ImageIcon, Eye } from 'lucide-react';
 
-export const DocumentViewerModal = ({ isOpen, onClose, doc }) => {
+export const DocumentViewerModal = ({ isOpen, onClose, doc: propDoc, document: propDocument }) => {
+  const doc = propDoc || propDocument;
   const [imageSrc, setImageSrc] = useState(null);
 
   useEffect(() => {
@@ -124,7 +125,7 @@ export const DocumentViewerModal = ({ isOpen, onClose, doc }) => {
             onClick={onClose}
             className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-900/30"
           >
-            Close Preview
+            Close Document
           </button>
         </div>
       </div>

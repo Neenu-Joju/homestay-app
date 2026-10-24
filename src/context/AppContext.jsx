@@ -643,6 +643,54 @@ export const AppProvider = ({ children }) => {
     showToast('Document deleted', 'info');
   };
 
+  const purgeMonthStorage = async (year, month) => {
+    if (currentRole !== 'admin') {
+      showToast('Permission Denied: Only Admin can purge cloud storage', 'error');
+      return { success: false, message: 'Unauthorized' };
+    }
+
+    const monthStr = String(month).padStart(2, '0');
+    const monthPrefix = `${year}-${monthStr}`;
+
+    // Target bookings and guests for this month
+    const monthlyBookings = bookings.filter((b) => b.check_in_date && b.check_in_date.startsWith(monthPrefix));
+    const monthlyGuestIds = new Set(monthlyBookings.map((b) => b.guest_id));
+
+    // Find documents uploaded in that month OR belonging to those guests
+    const targetDocs = documents.filter((d) => {
+      const matchGuest = monthlyGuestIds.has(d.guest_id);
+      const matchUploadDate = d.uploaded_at && d.uploaded_at.startsWith(monthPrefix);
+      return matchGuest || matchUploadDate;
+    });
+
+    if (targetDocs.length === 0) {
+      showToast('No documents found for this month to purge.', 'info');
+      return { success: true, count: 0 };
+    }
+
+    for (const doc of targetDocs) {
+      if (doc.file_path && !doc.file_path.startsWith('http')) {
+        try {
+          await supabase.storage.from('guest-documents').remove([doc.file_path]);
+        } catch (e) {
+          console.warn('Storage purge error:', e);
+        }
+      }
+    }
+
+    const targetDocIds = new Set(targetDocs.map((d) => d.id));
+    setDocuments((prev) => prev.filter((d) => !targetDocIds.has(d.id)));
+
+    try {
+      await supabase.from('documents').delete().in('id', Array.from(targetDocIds));
+    } catch (e) {
+      console.warn('DB delete error:', e);
+    }
+
+    showToast(`Storage Reclaimed: ${targetDocs.length} heavy document files purged. Local archive intact!`, 'success');
+    return { success: true, count: targetDocs.length };
+  };
+
   // --- STAFF HANDLERS ---
   const addStaff = async (staffData) => {
     const newStaff = {
@@ -831,6 +879,7 @@ export const AppProvider = ({ children }) => {
         documents,
         addDocument,
         deleteDocument,
+        purgeMonthStorage,
         staffList,
         addStaff,
         expensePayers,

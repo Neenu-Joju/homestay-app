@@ -4,6 +4,7 @@ import { StatusBadge } from '../components/common/StatusBadge';
 import { CheckInModal } from '../components/modals/CheckInModal';
 import { CheckOutModal } from '../components/modals/CheckOutModal';
 import { BookingModal } from '../components/modals/BookingModal';
+import { MonthlyCalendarView } from '../components/calendar/MonthlyCalendarView';
 import {
   CalendarCheck,
   Search,
@@ -14,11 +15,13 @@ import {
   Calendar,
   Filter,
   CheckCircle,
+  List,
 } from 'lucide-react';
 
 export const Bookings = () => {
   const { bookings, rooms, cancelBooking } = useApp();
 
+  const [viewMode, setViewMode] = useState('list'); // 'list' | 'calendar'
   const [activeTab, setActiveTab] = useState('All'); // 'All' | 'Upcoming' | 'Checked In' | 'Checked Out' | 'Cancelled'
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRoomFilter, setSelectedRoomFilter] = useState('all');
@@ -75,16 +78,48 @@ export const Bookings = () => {
             Manage reservation lifecycles, monitor room occupancy schedules, and execute instant check-in/out transitions.
           </p>
         </div>
-        <button
-          onClick={() => setShowBookingModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold shadow-lg shadow-emerald-900/30 transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          Create New Booking
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* View Switcher Toggle */}
+          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                viewMode === 'list'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <List className="w-3.5 h-3.5" />
+              <span>List / Table</span>
+            </button>
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                viewMode === 'calendar'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Monthly Calendar</span>
+            </button>
+          </div>
+
+          <button
+            onClick={() => setShowBookingModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold shadow-lg shadow-emerald-900/30 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            Create New Booking
+          </button>
+        </div>
       </div>
 
-      {/* Filter Tabs */}
+      {viewMode === 'calendar' ? (
+        <MonthlyCalendarView onNewBooking={() => setShowBookingModal(true)} />
+      ) : (
+        <>
+          {/* Filter Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-slate-800">
         {['All', 'Upcoming', 'Checked In', 'Checked Out', 'Cancelled'].map((tab) => {
           const count =
@@ -243,6 +278,8 @@ export const Bookings = () => {
           </table>
         </div>
       </div>
+    </>
+  )}
 
       {/* Check-In Modal */}
       <CheckInModal

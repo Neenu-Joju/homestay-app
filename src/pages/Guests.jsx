@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { GuestModal } from '../components/modals/GuestModal';
 import { DocumentUploadModal } from '../components/modals/DocumentUploadModal';
@@ -19,6 +20,7 @@ import {
   Calendar,
   ShieldCheck,
   ShieldAlert,
+  FileArchive,
 } from 'lucide-react';
 
 export const Guests = () => {
@@ -77,7 +79,15 @@ export const Guests = () => {
             Search guest records, view past stays, verify nationality documents, and attach ID proofs.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/reports-settings"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
+          >
+            <FileArchive className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Monthly Archives & Free-Tier Storage</span>
+          </Link>
+
           <button
             onClick={() => {
               setEditingGuest(null);
